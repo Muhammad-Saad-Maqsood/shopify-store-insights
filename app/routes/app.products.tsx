@@ -1,5 +1,14 @@
-import type { LoaderFunctionArgs } from "react-router";
-import { useLoaderData } from "react-router";
+import type {
+  ActionFunctionArgs,
+  LoaderFunctionArgs,
+} from "react-router";
+
+import {
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+} from "react-router";
 
 import { authenticate } from "../shopify.server";
 
@@ -15,6 +24,82 @@ const PRODUCTS_QUERY = `#graphql
           url
           altText
         }
+        variants(first: 1) {
+          nodes {
+            price
+          }
+        }
+      }
+    }
+  }
+`;
+
+const LOCATIONS_QUERY = `#graphql
+  query ProductLocations {
+    locations(first: 10) {
+      nodes {
+        id
+        name
+      }
+    }
+  }
+`;
+
+const STAGED_UPLOAD_MUTATION = `#graphql
+  mutation CreateStagedUpload($input: [StagedUploadInput!]!) {
+    stagedUploadsCreate(input: $input) {
+      stagedTargets {
+        url
+        resourceUrl
+        parameters {
+          name
+          value
+        }
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;
+
+const PRODUCT_CREATE_MUTATION = `#graphql
+  mutation CreateProduct(
+    $product: ProductCreateInput!
+    $media: [CreateMediaInput!]
+  ) {
+    productCreate(
+      product: $product
+      media: $media
+    ) {
+      product {
+        id
+        title
+        status
+        variants(first: 1) {
+          nodes {
+            id
+            price
+            inventoryQuantity
+            inventoryItem {
+              id
+              tracked
+            }
+          }
+        }
+        media(first: 1) {
+          nodes {
+            alt
+            mediaContentType
+            status
+          }
+        }
+      }
+
+      userErrors {
+        field
+        message
       }
     }
   }
@@ -24,118 +109,1190 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const { admin } = await authenticate.admin(request);
 
   try {
-    const response = await admin.graphql(PRODUCTS_QUERY);
-    
-    const result = (await response.json()) as {
-      data?: any;
+    const productsResponse = await admin.graphql(PRODUCTS_QUERY);
+
+    const productsResult = (await productsResponse.json()) as {
+      data?: {
+        products?: {
+          nodes?: Array<{
+            id: string;
+            title: string;
+            status: string;
+            totalInventory: number | null;
+            featuredImage?: {
+              url: string;
+              altText?: string | null;
+            } | null;
+            variants?: {
+              nodes?: Array<{
+                price: string;
+              }>;
+            };
+          }>;
+        };
+      };
       errors?: Array<{ message: string }>;
     };
 
-    if (result.errors?.length) {
+    if (productsResult.errors?.length) {
       return {
         products: [],
-        error: "Shopify could not load the products.",
+        locations: [],
+        error:
+          productsResult.errors[0]?.message ??
+          "Shopify could not load the products.",
       };
     }
 
+    let locations: Array<{
+      id: string;
+      name: string;
+    }> = [];
+
+    try {
+      const locationsResponse =
+        await admin.graphql(LOCATIONS_QUERY);
+
+      const locationsResult =
+        (await locationsResponse.json()) as {
+          data?: {
+            locations?: {
+              nodes?: Array<{
+                id: string;
+                name: string;
+              }>;
+            };
+          };
+          errors?: Array<{ message: string }>;
+        };
+
+      if (!locationsResult.errors?.length) {
+        locations =
+          locationsResult.data?.locations?.nodes ?? [];
+      }
+    } catch {
+      // Products can still load even if locations fail.
+    }
+
     return {
-      products: result.data?.products?.nodes ?? [],
+      products:
+        productsResult.data?.products?.nodes ?? [],
+      locations,
       error: null,
     };
   } catch {
     return {
       products: [],
+      locations: [],
       error: "Unable to connect to Shopify.",
     };
   }
 }
 
-export default function ProductsPage() {
-  const { products, error } = useLoaderData<typeof loader>();
+export async function action({ request }: ActionFunctionArgs) {
+  const { admin } = await authenticate.admin(request);
 
-    {error && (
-    <s-banner
-      heading="Unable to load products"
-      tone="critical"
-    >
-      {error}
-    </s-banner>
-  )}
+  const formData = await request.formData();
+
+  const title = String(formData.get("title") || "").trim();
+
+  const description = String(
+    formData.get("description") || "",
+  ).trim();
+
+  const priceValue = String(
+    formData.get("price") || "",
+  ).trim();
+
+  const inventoryValue = String(
+    formData.get("inventory") || "",
+  ).trim();
+
+  const locationId = String(
+    formData.get("locationId") || "",
+  ).trim();
+
+  const image = formData.get("image");
+
+  /*
+   * -------------------------
+   * Validation
+   * -------------------------
+   */
+
+  if (!title) {
+    return {
+      success: false,
+      error: "Product title is required.",
+    };
+  }
+
+  const price = Number(priceValue);
+
+  if (
+    !priceValue ||
+    !Number.isFinite(price) ||
+    price < 0
+  ) {
+    return {
+      success: false,
+      error: "Enter a valid product price.",
+    };
+  }
+
+  /*
+   * Inventory is optional.
+   *
+   * Empty inventory = no inventory quantity will be set.
+   */
+  let inventory: number | undefined;
+
+  if (inventoryValue !== "") {
+    const parsedInventory = Number(inventoryValue);
+
+    if (
+      !Number.isInteger(parsedInventory) ||
+      parsedInventory < 0
+    ) {
+      return {
+        success: false,
+        error:
+          "Inventory must be a whole number of 0 or greater.",
+      };
+    }
+
+    inventory = parsedInventory;
+  }
+
+  /*
+   * Location is optional.
+   *
+   * If the user enters inventory but does not select
+   * a location, we cannot assign that inventory.
+   */
+  
+  let stagedResourceUrl: string | null = null;
+  let imageFilename: string | null = null;
+  let imageContentType: string | null = null;
+
+  /*
+   * -------------------------
+   * 1. Upload image
+   * -------------------------
+   */
+
+  if (image instanceof File && image.size > 0) {
+    if (!image.type.startsWith("image/")) {
+      return {
+        success: false,
+        error: "Only image files are supported.",
+      };
+    }
+
+    if (image.size > 10 * 1024 * 1024) {
+      return {
+        success: false,
+        error: "Image must be smaller than 10 MB.",
+      };
+    }
+
+    imageFilename = image.name;
+    imageContentType = image.type;
+
+    const stagedResponse = await admin.graphql(
+      STAGED_UPLOAD_MUTATION,
+      {
+        variables: {
+          input: [
+            {
+              filename: image.name,
+              mimeType: image.type,
+              resource: "PRODUCT_IMAGE",
+              httpMethod: "POST",
+              fileSize: String(image.size),
+            },
+          ],
+        },
+      },
+    );
+
+    const stagedResult = (await stagedResponse.json()) as {
+      data?: {
+        stagedUploadsCreate?: {
+          stagedTargets?: Array<{
+            url: string;
+            resourceUrl: string;
+            parameters: Array<{
+              name: string;
+              value: string;
+            }>;
+          }>;
+          userErrors?: Array<{
+            field: string[];
+            message: string;
+          }>;
+        };
+      };
+      errors?: Array<{ message: string }>;
+    };
+
+    if (stagedResult.errors?.length) {
+      return {
+        success: false,
+        error: stagedResult.errors[0].message,
+      };
+    }
+
+    const staged =
+      stagedResult.data?.stagedUploadsCreate;
+
+    if (staged?.userErrors?.length) {
+      return {
+        success: false,
+        error: staged.userErrors[0].message,
+      };
+    }
+
+    const target = staged?.stagedTargets?.[0];
+
+    if (!target) {
+      return {
+        success: false,
+        error:
+          "Shopify did not provide an image upload target.",
+      };
+    }
+
+    const uploadForm = new FormData();
+
+    for (const parameter of target.parameters) {
+      uploadForm.append(
+        parameter.name,
+        parameter.value,
+      );
+    }
+
+    uploadForm.append("file", image);
+
+    const uploadResponse = await fetch(
+      target.url,
+      {
+        method: "POST",
+        body: uploadForm,
+      },
+    );
+
+    if (!uploadResponse.ok) {
+      return {
+        success: false,
+        error: "Shopify image upload failed.",
+      };
+    }
+
+    stagedResourceUrl = target.resourceUrl;
+  }
+
+  /*
+   * -------------------------
+   * 2. Build product input
+   * -------------------------
+   */
+
+  const productInput: Record<string, unknown> = {
+    title,
+
+    descriptionHtml: description
+      ? `<p>${description
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")}</p>`
+      : undefined,
+
+    status: "ACTIVE",
+  };
+
+  /*
+   * -------------------------
+   * 3. Attach image
+   * -------------------------
+   */
+
+  /*
+   * -------------------------
+   * 4. Create product
+   * -------------------------
+   */
+
+  try {
+    /*
+    * Create the product first.
+    *
+    * Price, inventory and location are handled separately
+    * because inventory is optional.
+    */
+
+    const media =
+      stagedResourceUrl
+        ? [
+            {
+              originalSource: stagedResourceUrl,
+              mediaContentType: "IMAGE",
+              alt: title,
+            },
+          ]
+        : undefined;
+
+    const response = await admin.graphql(
+      PRODUCT_CREATE_MUTATION,
+      {
+        variables: {
+          product: productInput,
+          media,
+        },
+      },
+    );
+
+    const result = (await response.json()) as {
+      data?: {
+        productCreate?: {
+          product?: {
+            id: string;
+            title: string;
+            status: string;
+            variants?: {
+              nodes?: Array<{
+                id: string;
+                price: string;
+                inventoryQuantity: number | null;
+                inventoryItem?: {
+                  id: string;
+                  tracked: boolean;
+                };
+              }>;
+            };
+          } | null;
+
+          userErrors?: Array<{
+            field: string[];
+            message: string;
+          }>;
+        };
+      };
+
+      errors?: Array<{
+        message: string;
+      }>;
+    };
+
+    if (result.errors?.length) {
+      return {
+        success: false,
+        error: result.errors[0].message,
+      };
+    }
+
+    const createResult =
+      result.data?.productCreate;
+
+    if (createResult?.userErrors?.length) {
+      return {
+        success: false,
+        error:
+          createResult.userErrors[0].message,
+      };
+    }
+
+    if (!createResult?.product) {
+      return {
+        success: false,
+        error:
+          "Shopify did not return the created product.",
+      };
+    }
+
+    const product = createResult.product;
+
+    /*
+    * Price is optional in the API flow only because
+    * productCreate creates the initial variant.
+    *
+    * We update its price immediately after creation.
+    */
+
+    const variantId =
+      product.variants?.nodes?.[0]?.id;
+
+    if (variantId) {
+      const priceResponse = await admin.graphql(
+        `#graphql
+          mutation UpdateVariantPrice(
+            $productId: ID!
+            $variants: [ProductVariantsBulkInput!]!
+          ) {
+            productVariantsBulkUpdate(
+              productId: $productId
+              variants: $variants
+            ) {
+              product {
+                id
+              }
+              productVariants {
+                id
+                price
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `,
+        {
+          variables: {
+            productId: product.id,
+            variants: [
+              {
+                id: variantId,
+                price: price.toFixed(2),
+              },
+            ],
+          },
+        },
+      );
+
+      const priceResult =
+        (await priceResponse.json()) as {
+          data?: {
+            productVariantsBulkUpdate?: {
+              userErrors?: Array<{
+                field: string[];
+                message: string;
+              }>;
+            };
+          };
+          errors?: Array<{
+            message: string;
+          }>;
+        };
+
+      if (priceResult.errors?.length) {
+        return {
+          success: false,
+          error: priceResult.errors[0].message,
+        };
+      }
+
+      const priceErrors =
+        priceResult.data?.productVariantsBulkUpdate
+          ?.userErrors;
+
+      if (priceErrors?.length) {
+        return {
+          success: false,
+          error: priceErrors[0].message,
+        };
+      }
+    }
+
+      /*
+     * Enable inventory tracking when inventory was provided.
+     *
+     * If no location is selected, automatically use the
+     * first available Shopify location.
+     */
+    
+      if (variantId && inventory !== undefined) {
+        const inventoryItemId =
+          product.variants?.nodes?.[0]?.inventoryItem?.id;
+
+        if (inventoryItemId) {
+          let targetLocationId = locationId;
+
+          // If no location was selected, use the first store location.
+          if (!targetLocationId) {
+            const locationResponse = await admin.graphql(
+              `#graphql
+                query DefaultInventoryLocation {
+                  locations(first: 1) {
+                    nodes {
+                      id
+                    }
+                  }
+                }
+              `,
+            );
+
+            const locationResult =
+              (await locationResponse.json()) as {
+                data?: {
+                  locations?: {
+                    nodes?: Array<{
+                      id: string;
+                    }>;
+                  };
+                };
+                errors?: Array<{
+                  message: string;
+                }>;
+              };
+
+            if (locationResult.errors?.length) {
+              return {
+                success: false,
+                error: locationResult.errors[0].message,
+              };
+            }
+
+            targetLocationId =
+              locationResult.data?.locations?.nodes?.[0]?.id ?? "";
+          }
+
+          if (!targetLocationId) {
+            return {
+              success: false,
+              error: "No inventory location is available.",
+            };
+          }
+
+          // 1. Enable inventory tracking.
+          const trackingResponse = await admin.graphql(
+            `#graphql
+              mutation InventoryItemUpdate(
+                $id: ID!
+                $input: InventoryItemInput!
+              ) {
+                inventoryItemUpdate(
+                  id: $id
+                  input: $input
+                ) {
+                  inventoryItem {
+                    id
+                    tracked
+                  }
+                  userErrors {
+                    field
+                    message
+                  }
+                }
+              }
+            `,
+            {
+              variables: {
+                id: inventoryItemId,
+                input: {
+                  tracked: true,
+                },
+              },
+            },
+          );
+
+          const trackingResult =
+            (await trackingResponse.json()) as {
+              data?: {
+                inventoryItemUpdate?: {
+                  userErrors?: Array<{
+                    field: string[];
+                    message: string;
+                  }>;
+                };
+              };
+              errors?: Array<{
+                message: string;
+              }>;
+            };
+
+          if (trackingResult.errors?.length) {
+            return {
+              success: false,
+              error: trackingResult.errors[0].message,
+            };
+          }
+
+          const trackingErrors =
+            trackingResult.data?.inventoryItemUpdate?.userErrors;
+
+          if (trackingErrors?.length) {
+            return {
+              success: false,
+              error: trackingErrors[0].message,
+            };
+          }
+
+          // 2. Check whether the inventory item is already active
+          // at the target location.
+          const levelsResponse = await admin.graphql(
+            `#graphql
+              query InventoryLevels($inventoryItemId: ID!) {
+                inventoryItem(id: $inventoryItemId) {
+                  inventoryLevels(first: 50) {
+                    nodes {
+                      location {
+                        id
+                      }
+                    }
+                  }
+                }
+              }
+            `,
+            {
+              variables: {
+                inventoryItemId,
+              },
+            },
+          );
+
+          const levelsResult =
+            (await levelsResponse.json()) as {
+              data?: {
+                inventoryItem?: {
+                  inventoryLevels?: {
+                    nodes?: Array<{
+                      location: {
+                        id: string;
+                      };
+                    }>;
+                  };
+                };
+              };
+              errors?: Array<{
+                message: string;
+              }>;
+            };
+
+          if (levelsResult.errors?.length) {
+            return {
+              success: false,
+              error: levelsResult.errors[0].message,
+            };
+          }
+
+          const activeLocations =
+            levelsResult.data?.inventoryItem?.inventoryLevels?.nodes ?? [];
+
+          const isAlreadyActive = activeLocations.some(
+            (level) =>
+              level.location.id === targetLocationId,
+          );
+
+          // 3. Activate only when necessary.
+          if (!isAlreadyActive) {
+            const activateResponse = await admin.graphql(
+              `#graphql
+                mutation ActivateInventory(
+                  $inventoryItemId: ID!
+                  $locationId: ID!
+                  $idempotencyKey: String!
+                ) {
+                  inventoryActivate(
+                    inventoryItemId: $inventoryItemId
+                    locationId: $locationId
+                  ) @idempotent(key: $idempotencyKey) {
+                    inventoryLevel {
+                      id
+                    }
+                    userErrors {
+                      field
+                      message
+                    }
+                  }
+                }
+              `,
+              {
+                variables: {
+                  inventoryItemId,
+                  locationId: targetLocationId,
+                  idempotencyKey: crypto.randomUUID(),
+                },
+              },
+            );
+
+            const activateResult =
+              (await activateResponse.json()) as {
+                data?: {
+                  inventoryActivate?: {
+                    userErrors?: Array<{
+                      field: string[];
+                      message: string;
+                    }>;
+                  };
+                };
+                errors?: Array<{
+                  message: string;
+                }>;
+              };
+
+            if (activateResult.errors?.length) {
+              return {
+                success: false,
+                error: activateResult.errors[0].message,
+              };
+            }
+
+            const activateErrors =
+              activateResult.data?.inventoryActivate?.userErrors;
+
+            if (activateErrors?.length) {
+              return {
+                success: false,
+                error: activateErrors[0].message,
+              };
+            }
+          }
+
+          // 4. Now that the inventory level is active,
+          // set the requested available quantity.
+          const inventoryResponse = await admin.graphql(
+            `#graphql
+             mutation SetInventoryQuantity(
+                $input: InventorySetQuantitiesInput!
+                $idempotencyKey: String!
+              ) {
+                inventorySetQuantities(
+                  input: $input
+                ) @idempotent(key: $idempotencyKey) {
+                  inventoryAdjustmentGroup {
+                    createdAt
+                  }
+                  userErrors {
+                    field
+                    message
+                  }
+                }
+              }
+            `,
+            {
+              variables: {
+                input: {
+                  name: "available",
+                  reason: "correction",
+                  quantities: [
+                    {
+                      inventoryItemId,
+                      locationId: targetLocationId,
+                      quantity: inventory,
+                      changeFromQuantity: null,
+                    },
+                  ],
+                },
+                idempotencyKey: crypto.randomUUID(),
+              },
+            },
+          );
+
+          const inventoryResult =
+            (await inventoryResponse.json()) as {
+              data?: {
+                inventorySetQuantities?: {
+                  userErrors?: Array<{
+                    field: string[];
+                    message: string;
+                  }>;
+                };
+              };
+              errors?: Array<{
+                message: string;
+              }>;
+            };
+
+          if (inventoryResult.errors?.length) {
+            return {
+              success: false,
+              error: inventoryResult.errors[0].message,
+            };
+          }
+
+          const inventoryErrors =
+            inventoryResult.data?.inventorySetQuantities?.userErrors;
+
+          if (inventoryErrors?.length) {
+            return {
+              success: false,
+              error: inventoryErrors[0].message,
+            };
+          }
+        }
+      } 
+    return {
+      success: true,
+      product,
+      error: null,
+    };
+  } catch (error) {
+    console.error("Product creation failed:", error);
+
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to create the product.",
+    };
+  }
+}
+
+export default function ProductsPage() {
+  const {
+    products,
+    locations,
+    error,
+  } = useLoaderData<typeof loader>();
+
+  const actionData = useActionData<typeof action>();
+  const navigation = useNavigation();
+
+  const isCreating =
+    navigation.state === "submitting" &&
+    navigation.formData?.get("intent") === "create";
 
   return (
     <s-page heading="Products">
-      <s-section heading="Product catalog">
-        <s-paragraph>
-          Products are loaded directly from the Shopify Admin GraphQL API.
-        </s-paragraph>
+      {error && (
+        <s-banner
+          heading="Unable to load products"
+          tone="critical"
+        >
+          {error}
+        </s-banner>
+      )}
+
+      {actionData?.success && (
+        <s-banner
+          heading="Product created"
+          tone="success"
+        >
+          {actionData.product?.title} was successfully
+          created.
+        </s-banner>
+      )}
+
+      {actionData?.error && (
+        <s-banner
+          heading="Unable to create product"
+          tone="critical"
+        >
+          {actionData.error}
+        </s-banner>
+      )}
+
+      <s-section heading="Create product">
+        <Form
+          method="post"
+          encType="multipart/form-data"
+        >
+          <input
+            type="hidden"
+            name="intent"
+            value="create"
+          />
+
+          <div className="create-form">
+            <div className="field">
+              <label htmlFor="title">
+                Product title
+              </label>
+
+              <input
+                id="title"
+                name="title"
+                type="text"
+                placeholder="e.g. Premium Hoodie"
+                required
+              />
+            </div>
+
+            <div className="field">
+              <label htmlFor="description">
+                Description
+              </label>
+
+              <textarea
+                id="description"
+                name="description"
+                placeholder="Add a short product description..."
+                rows={4}
+              />
+            </div>
+
+            <div className="field-grid">
+              <div className="field">
+                <label htmlFor="price">
+                  Price
+                </label>
+
+                <div className="input-with-prefix">
+                  <span>$</span>
+
+                  <input
+                    id="price"
+                    name="price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="79.99"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="field">
+                <label htmlFor="inventory">
+                  Inventory
+                </label>
+
+                <input
+                  id="inventory"
+                  name="inventory"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="25"
+                />
+              </div>
+            </div>
+
+            <div className="field">
+              <label htmlFor="locationId">
+                Inventory location
+              </label>
+
+              <select
+                id="locationId"
+                name="locationId"
+                defaultValue=""
+              >
+                <option value="">
+                  No Inventory Location
+                </option>
+
+                {locations.map((location) => (
+                  <option
+                    key={location.id}
+                    value={location.id}
+                  >
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="image">
+                Product image
+              </label>
+
+              <input
+                id="image"
+                name="image"
+                type="file"
+                accept="image/*"
+              />
+
+              <span className="field-help">
+                JPG, PNG, WEBP or another standard image
+                format. Maximum 10 MB.
+              </span>
+            </div>
+
+            <s-button
+              type="submit"
+              variant="primary"
+              loading={isCreating}
+            >
+              {isCreating
+                ? "Creating product..."
+                : "Create product"}
+            </s-button>
+          </div>
+        </Form>
       </s-section>
 
-      <s-section>
+      <s-section heading="Product catalog">
+        <div className="catalog-header">
+          <div>
+            <strong>
+              {products.length} products
+            </strong>
+
+            <p>
+              Products are loaded directly from the
+              Shopify Admin GraphQL API.
+            </p>
+          </div>
+        </div>
+
         {products.length === 0 ? (
-          <s-paragraph>
-            No products found in this store.
-          </s-paragraph>
+          <div className="empty-state">
+            <strong>No products found</strong>
+
+            <p>
+              Create your first product above.
+            </p>
+          </div>
         ) : (
           <div className="products-grid">
-            {products.map((product: any) => (
-              <article className="product-card" key={product.id}>
-                {product.featuredImage?.url ? (
-                  <img
-                    src={product.featuredImage.url}
-                    alt={product.featuredImage.altText || product.title}
-                  />
-                ) : (
-                  <div className="image-placeholder">
-                    No image
+            {products.map((product) => {
+              const price =
+                product.variants?.nodes?.[0]?.price;
+
+              return (
+                <article
+                  className="product-card"
+                  key={product.id}
+                >
+                  {product.featuredImage?.url ? (
+                    <img
+                      src={product.featuredImage.url}
+                      alt={
+                        product.featuredImage.altText ||
+                        product.title
+                      }
+                    />
+                  ) : (
+                    <div className="image-placeholder">
+                      No image
+                    </div>
+                  )}
+
+                  <div className="product-content">
+                    <div className="product-header">
+                      <h3>{product.title}</h3>
+
+                      <s-badge tone="success">
+                        {product.status}
+                      </s-badge>
+                    </div>
+
+                    <div className="product-meta">
+                      <span>
+                        {price
+                          ? `$${price}`
+                          : "No price"}
+                      </span>
+
+                      <span>
+                        {product.totalInventory ?? 0}{" "}
+                        units
+                      </span>
+                    </div>
                   </div>
-                )}
-
-                <div className="product-content">
-                  <div className="product-header">
-                    <h3>{product.title}</h3>
-
-                    <span className="status">
-                      {product.status}
-                    </span>
-                  </div>
-
-                  <p>
-                    Inventory:{" "}
-                    <strong>{product.totalInventory ?? 0}</strong>
-                  </p>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
       </s-section>
 
       <style>{`
+        .create-form {
+          display: grid;
+          gap: 18px;
+          max-width: 720px;
+        }
+
+        .field {
+          display: grid;
+          gap: 7px;
+        }
+
+        .field label {
+          font-size: 13px;
+          font-weight: 600;
+        }
+
+        .field input,
+        .field textarea,
+        .field select {
+          width: 100%;
+          box-sizing: border-box;
+          padding: 10px 12px;
+          border: 1px solid #c9cccf;
+          border-radius: 8px;
+          background: white;
+          color: #202223;
+          font: inherit;
+        }
+
+        .field textarea {
+          resize: vertical;
+        }
+
+        .field input:focus,
+        .field textarea:focus,
+        .field select:focus {
+          outline: none;
+          border-color: #2c6ecb;
+          box-shadow: 0 0 0 1px #2c6ecb;
+        }
+
+        .field-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+
+        .input-with-prefix {
+          position: relative;
+        }
+
+        .input-with-prefix > span {
+          position: absolute;
+          left: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #6d7175;
+          pointer-events: none;
+        }
+
+        .input-with-prefix input {
+          padding-left: 28px;
+        }
+
+        .field-help {
+          font-size: 12px;
+          color: #6d7175;
+        }
+
+        .catalog-header {
+          margin-bottom: 18px;
+        }
+
+        .catalog-header p {
+          margin: 5px 0 0;
+          color: #6d7175;
+          font-size: 13px;
+        }
+
         .products-grid {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns:
+            repeat(3, minmax(0, 1fr));
           gap: 16px;
         }
 
         .product-card {
           overflow: hidden;
-          border: 1px solid #e1e3e5;
+          border: 1px solid
+            var(--s-color-border);
           border-radius: 12px;
-          background: white;
+          background:
+            var(--s-color-bg-surface);
         }
 
         .product-card img,
         .image-placeholder {
           width: 100%;
           height: 190px;
-          object-fit: cover;
+          object-fit: contain;
+          display: block;
+          background: var(--s-color-bg-surface-secondary);
         }
 
         .image-placeholder {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: #f6f6f7;
+          background:
+            var(--s-color-bg-surface-secondary);
           color: #6d7175;
         }
 
@@ -155,26 +1312,47 @@ export default function ProductsPage() {
           font-size: 16px;
         }
 
-        p {
-          margin: 10px 0 0;
+        .product-meta {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 12px;
+          font-size: 13px;
           color: #6d7175;
         }
 
-        .status {
-          padding: 4px 8px;
-          border-radius: 999px;
-          background: #f1f1f1;
-          font-size: 11px;
+        .product-meta span:first-child {
           font-weight: 600;
+          color: inherit;
+        }
+
+        .empty-state {
+          padding: 36px 20px;
+          text-align: center;
+          border: 1px dashed
+            var(--s-color-border);
+          border-radius: 10px;
+        }
+
+        .empty-state strong {
+          display: block;
+          margin-bottom: 6px;
+        }
+
+        .empty-state p {
+          margin: 0;
+          color: #6d7175;
+          font-size: 13px;
         }
 
         @media (max-width: 900px) {
           .products-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns:
+              repeat(2, minmax(0, 1fr));
           }
         }
 
         @media (max-width: 600px) {
+          .field-grid,
           .products-grid {
             grid-template-columns: 1fr;
           }

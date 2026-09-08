@@ -4,7 +4,7 @@ import { authenticate } from "../shopify.server";
 
 const STORE_INSIGHTS_QUERY = `#graphql
   query StoreInsights {
-    products(first: 10, sortKey: UPDATED_AT, reverse: true) {
+    products(first: 20, sortKey: UPDATED_AT, reverse: true) {
       nodes {
         id
         title
@@ -15,6 +15,10 @@ const STORE_INSIGHTS_QUERY = `#graphql
           altText
         }
       }
+    }
+
+    productsCount {
+      count
     }
 
     orders(first: 10, sortKey: CREATED_AT, reverse: true) {
@@ -55,6 +59,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
             } | null;
           }>;
         };
+
+        productsCount?: {
+          count: number;
+        };
+
         orders?: {
           nodes?: Array<{
             id: string;
@@ -101,6 +110,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return {
       products,
       orders,
+      productCount: result.data?.productsCount?.count ?? 0,
       recentRevenue: recentRevenue.toFixed(2),
       currency,
       error: null,
@@ -126,7 +136,7 @@ function formatStatus(status?: string | null) {
 }
 
 export default function Dashboard() {
-  const { products, orders, recentRevenue, currency, error } =
+  const { products, orders, productCount, recentRevenue, currency, error } =
     useLoaderData<typeof loader>();
 
   const revalidator = useRevalidator();
@@ -183,7 +193,7 @@ export default function Dashboard() {
 
         <div className="kpi-card">
           <span className="kpi-label">Products</span>
-          <strong>{products.length}</strong>
+          <strong>{productCount}</strong>
           <span className="kpi-meta">
             Active catalog
           </span>
@@ -237,7 +247,7 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="product-grid">
-            {products.slice(0, 6).map((product) => (
+            {products.map((product) => (
               <div className="product-card" key={product.id}>
                 {product.featuredImage?.url ? (
                   <img
@@ -388,7 +398,7 @@ export default function Dashboard() {
         .product-image-placeholder {
           width: 100%;
           height: 170px;
-          object-fit: cover;
+          object-fit: contain;
           display: block;
         }
 
