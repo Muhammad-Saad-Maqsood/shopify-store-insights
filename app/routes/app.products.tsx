@@ -10,6 +10,8 @@ import {
   useNavigation,
 } from "react-router";
 
+import { useEffect, useState } from "react";
+
 import { authenticate } from "../shopify.server";
 
 const PRODUCTS_QUERY = `#graphql
@@ -97,6 +99,35 @@ const PRODUCT_CREATE_MUTATION = `#graphql
         }
       }
 
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;
+
+const PRODUCT_UPDATE_MUTATION = `#graphql
+  mutation UpdateProduct($product: ProductUpdateInput!) {
+    productUpdate(product: $product) {
+      product {
+        id
+        title
+        descriptionHtml
+        status
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;
+
+const PRODUCT_DELETE_MUTATION = `#graphql
+  mutation DeleteProduct($input: ProductDeleteInput!) {
+    productDelete(input: $input) {
+      deletedProductId
       userErrors {
         field
         message
@@ -193,6 +224,280 @@ export async function action({ request }: ActionFunctionArgs) {
   const { admin } = await authenticate.admin(request);
 
   const formData = await request.formData();
+
+  const intent = String(formData.get("intent") || "create");
+
+  if (intent === "delete") {
+    const productId = String(
+      formData.get("productId") || "",
+    ).trim();
+
+    if (!productId) {
+      return {
+        success: false,
+        message: "Product ID is required.",
+      };
+    }
+
+    try {
+      const response = await admin.graphql(
+        PRODUCT_DELETE_MUTATION,
+        {
+          variables: {
+            input: {
+              id: productId,
+            },
+          },
+        },
+      );
+
+      const result = (await response.json()) as {
+        data?: {
+          productDelete?: {
+            deletedProductId?: string | null;
+            userErrors?: Array<{
+              field: string[];
+              message: string;
+            }>;
+          };
+        };
+        errors?: Array<{ message: string }>;
+      };
+
+      if (result.errors?.length) {
+        return {
+          success: false,
+          message: result.errors[0].message,
+        };
+      }
+
+      const errors =
+        result.data?.productDelete?.userErrors ?? [];
+
+      if (errors.length) {
+        return {
+          success: false,
+          message: errors[0].message,
+        };
+      }
+
+      return {
+        success: true,
+        message: "Product deleted successfully.",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to delete product.",
+      };
+    }
+  }
+
+  if (intent === "update") {
+    const productId = String(
+      formData.get("productId") || "",
+    ).trim();
+
+    const title = String(
+      formData.get("title") || "",
+    ).trim();
+
+    const description = String(
+      formData.get("description") || "",
+    ).trim();
+
+    const priceValue = String(
+      formData.get("price") || "",
+    ).trim();
+
+    const price = Number(priceValue);
+
+    if (!productId) {
+      return {
+        success: false,
+        message: "Product ID is required.",
+      };
+    }
+
+    if (!title) {
+      return {
+        success: false,
+        message: "Product title is required.",
+      };
+    }
+
+    if (!priceValue || !Number.isFinite(price) || price < 0) {
+      return {
+        success: false,
+        message: "Enter a valid product price.",
+      };
+    }
+
+    try {
+      // Update product fields
+      const productResponse = await admin.graphql(
+        PRODUCT_UPDATE_MUTATION,
+        {
+          variables: {
+            product: {
+              id: productId,
+              title,
+              descriptionHtml: description
+                ? `<p>${description
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")}</p>`
+                : "",
+            },
+          },
+        },
+      );
+
+      const productResult =
+        (await productResponse.json()) as {
+          data?: {
+            productUpdate?: {
+              userErrors?: Array<{
+                field: string[];
+                message: string;
+              }>;
+            };
+          };
+          errors?: Array<{ message: string }>;
+        };
+
+      if (productResult.errors?.length) {
+        return {
+          success: false,
+          message: productResult.errors[0].message,
+        };
+      }
+
+      const productErrors =
+        productResult.data?.productUpdate?.userErrors ?? [];
+
+      if (productErrors.length) {
+        return {
+          success: false,
+          message: productErrors[0].message,
+        };
+      }
+
+      // Get the product's first variant
+      const variantResponse = await admin.graphql(
+        `#graphql
+          query ProductVariantForUpdate($id: ID!) {
+            product(id: $id) {
+              variants(first: 1) {
+                nodes {
+                  id
+                }
+              }
+            }
+          }
+        `,
+        {
+          variables: {
+            id: productId,
+          },
+        },
+      );
+
+      const variantResult =
+        (await variantResponse.json()) as {
+          data?: {
+            product?: {
+              variants?: {
+                nodes?: Array<{
+                  id: string;
+                }>;
+              };
+            };
+          };
+        };
+
+      const variantId =
+        variantResult.data?.product?.variants?.nodes?.[0]?.id;
+
+      if (variantId) {
+        const priceResponse = await admin.graphql(
+          `#graphql
+            mutation UpdateVariantPrice(
+              $productId: ID!
+              $variants: [ProductVariantsBulkInput!]!
+            ) {
+              productVariantsBulkUpdate(
+                productId: $productId
+                variants: $variants
+              ) {
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+          `,
+          {
+            variables: {
+              productId,
+              variants: [
+                {
+                  id: variantId,
+                  price: price.toFixed(2),
+                },
+              ],
+            },
+          },
+        );
+
+        const priceResult =
+          (await priceResponse.json()) as {
+            data?: {
+              productVariantsBulkUpdate?: {
+                userErrors?: Array<{
+                  field: string[];
+                  message: string;
+                }>;
+              };
+            };
+            errors?: Array<{ message: string }>;
+          };
+
+        if (priceResult.errors?.length) {
+          return {
+            success: false,
+            message: priceResult.errors[0].message,
+          };
+        }
+
+        const priceErrors =
+          priceResult.data?.productVariantsBulkUpdate?.userErrors ?? [];
+
+        if (priceErrors.length) {
+          return {
+            success: false,
+            message: priceErrors[0].message,
+          };
+        }
+      }
+
+      return {
+        success: true,
+        message: "Product updated successfully.",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to update product.",
+      };
+    }
+  }
 
   const title = String(formData.get("title") || "").trim();
 
@@ -940,6 +1245,14 @@ export default function ProductsPage() {
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
 
+  const [openEditId, setOpenEditId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (actionData?.success) {
+      setOpenEditId(null);
+    }
+  }, [actionData]);
+
   const isCreating =
     navigation.state === "submitting" &&
     navigation.formData?.get("intent") === "create";
@@ -957,20 +1270,19 @@ export default function ProductsPage() {
 
       {actionData?.success && (
         <s-banner
-          heading="Product created"
+          heading="Success"
           tone="success"
         >
-          {actionData.product?.title} was successfully
-          created.
+          {actionData.message}
         </s-banner>
       )}
 
-      {actionData?.error && (
+      {actionData?.message && !actionData.success && (
         <s-banner
-          heading="Unable to create product"
+          heading="Action failed"
           tone="critical"
         >
-          {actionData.error}
+          {actionData.message}
         </s-banner>
       )}
 
@@ -1113,10 +1425,6 @@ export default function ProductsPage() {
               {products.length} products
             </strong>
 
-            <p>
-              Products are loaded directly from the
-              Shopify Admin GraphQL API.
-            </p>
           </div>
         </div>
 
@@ -1173,6 +1481,91 @@ export default function ProductsPage() {
                         {product.totalInventory ?? 0}{" "}
                         units
                       </span>
+                    </div>
+                    <div className="product-actions">
+                      <details
+                       className="edit-details"
+                       open={openEditId === product.id}
+                        onToggle={(event) => {
+                          setOpenEditId(
+                            event.currentTarget.open
+                              ? product.id
+                              : null,
+                          );
+                        }}
+                       >
+                        <summary>Edit</summary>
+
+                        <Form method="post" className="edit-form">
+                          <input
+                            type="hidden"
+                            name="intent"
+                            value="update"
+                          />
+
+                          <input
+                            type="hidden"
+                            name="productId"
+                            value={product.id}
+                          />
+
+                          <input
+                            name="title"
+                            defaultValue={product.title}
+                            placeholder="Product title"
+                            required
+                          />
+
+                          <input
+                            name="price"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            defaultValue={price ?? ""}
+                            placeholder="Price"
+                            required
+                          />
+
+                          <textarea
+                            name="description"
+                            placeholder="Description"
+                            rows={3}
+                          />
+
+                          <s-button type="submit" variant="primary">
+                            Save changes
+                          </s-button>
+                        </Form>
+                      </details>
+
+                      <Form
+                        method="post"
+                        onSubmit={(event) => {
+                          if (
+                            !window.confirm(
+                              `Delete "${product.title}"?`
+                            )
+                          ) {
+                            event.preventDefault();
+                          }
+                        }}
+                      >
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="delete"
+                        />
+
+                        <input
+                          type="hidden"
+                          name="productId"
+                          value={product.id}
+                        />
+
+                        <s-button type="submit">
+                          Delete
+                        </s-button>
+                      </Form>
                     </div>
                   </div>
                 </article>
@@ -1356,6 +1749,39 @@ export default function ProductsPage() {
           .products-grid {
             grid-template-columns: 1fr;
           }
+        }
+        
+        .product-actions {
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+          margin-top: 14px;
+        }
+
+        .edit-details {
+          flex: 1;
+        }
+
+        .edit-details summary {
+          cursor: pointer;
+          font-weight: 600;
+          margin-bottom: 10px;
+        }
+
+        .edit-form {
+          display: grid;
+          gap: 8px;
+          margin-top: 10px;
+        }
+
+        .edit-form input,
+        .edit-form textarea {
+          width: 100%;
+          box-sizing: border-box;
+          padding: 9px 10px;
+          border: 1px solid #c9cccf;
+          border-radius: 8px;
+          font: inherit;
         }
       `}</style>
     </s-page>
