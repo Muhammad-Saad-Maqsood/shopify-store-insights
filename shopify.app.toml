@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "983a93e3bf9260ad2eff5a969b17ba9c"
-application_url = "https://store-insights-ffzw.onrender.com"
+application_url = "https://store-insights-ffzw.onrender.com/app"
 embedded = true
 name = "store-insights"
 
