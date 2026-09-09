@@ -1,43 +1,8 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useRevalidator } from "react-router";
+
+import { STORE_INSIGHTS_QUERY } from "../graphql/dashboard";
 import { authenticate } from "../shopify.server";
-
-const STORE_INSIGHTS_QUERY = `#graphql
-  query StoreInsights {
-    products(first: 20, sortKey: UPDATED_AT, reverse: true) {
-      nodes {
-        id
-        title
-        status
-        totalInventory
-        featuredImage {
-          url
-          altText
-        }
-      }
-    }
-
-    productsCount {
-      count
-    }
-
-    orders(first: 10, sortKey: CREATED_AT, reverse: true) {
-      nodes {
-        id
-        name
-        createdAt
-        displayFinancialStatus
-        displayFulfillmentStatus
-        currentTotalPriceSet {
-          shopMoney {
-            amount
-            currencyCode
-          }
-        }
-      }
-    }
-  }
-`;
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const { admin } = await authenticate.admin(request);
@@ -99,8 +64,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const orders = result.data?.orders?.nodes ?? [];
 
     const recentRevenue = orders.reduce((total, order) => {
-      return total + Number(
-        order.currentTotalPriceSet?.shopMoney?.amount ?? 0
+      return (
+        total + Number(order.currentTotalPriceSet?.shopMoney?.amount ?? 0)
       );
     }, 0);
 
@@ -143,7 +108,7 @@ export default function Dashboard() {
 
   const isRefreshing = revalidator.state === "loading";
 
-    return (
+  return (
     <s-page heading="Store Insights">
       <s-button
         slot="primary-action"
@@ -167,9 +132,7 @@ export default function Dashboard() {
 
       <div className="dashboard-intro">
         <h2>Store performance</h2>
-        <p>
-          Monitor your latest orders, revenue, and product inventory.
-        </p>
+        <p>Monitor your latest orders, revenue, and product inventory.</p>
       </div>
 
       <div className="kpi-grid">
@@ -178,25 +141,19 @@ export default function Dashboard() {
           <strong>
             {currency} {recentRevenue}
           </strong>
-          <span className="kpi-meta">
-            From {orders.length} recent orders
-          </span>
+          <span className="kpi-meta">From {orders.length} recent orders</span>
         </div>
 
         <div className="kpi-card">
           <span className="kpi-label">Orders</span>
           <strong>{orders.length}</strong>
-          <span className="kpi-meta">
-            Latest orders
-          </span>
+          <span className="kpi-meta">Latest orders</span>
         </div>
 
         <div className="kpi-card">
           <span className="kpi-label">Products</span>
           <strong>{productCount}</strong>
-          <span className="kpi-meta">
-            Active catalog
-          </span>
+          <span className="kpi-meta">Active catalog</span>
         </div>
       </div>
 
@@ -204,9 +161,7 @@ export default function Dashboard() {
         {orders.length === 0 ? (
           <div className="empty-state">
             <strong>No orders yet</strong>
-            <p>
-              Orders will appear here when customers place orders.
-            </p>
+            <p>Orders will appear here when customers place orders.</p>
           </div>
         ) : (
           <div className="orders-list">
@@ -241,9 +196,7 @@ export default function Dashboard() {
         {products.length === 0 ? (
           <div className="empty-state">
             <strong>No products found</strong>
-            <p>
-              Create a product in Shopify Admin and refresh this page.
-            </p>
+            <p>Create a product in Shopify Admin and refresh this page.</p>
           </div>
         ) : (
           <div className="product-grid">
@@ -255,9 +208,7 @@ export default function Dashboard() {
                     alt={product.featuredImage.altText ?? product.title}
                   />
                 ) : (
-                  <div className="product-image-placeholder">
-                    No image
-                  </div>
+                  <div className="product-image-placeholder">No image</div>
                 )}
 
                 <div className="product-info">
@@ -269,9 +220,7 @@ export default function Dashboard() {
                     </s-badge>
                   </div>
 
-                  <span>
-                    {product.totalInventory} units in stock
-                  </span>
+                  <span>{product.totalInventory} units in stock</span>
                 </div>
               </div>
             ))}

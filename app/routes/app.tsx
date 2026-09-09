@@ -35,7 +35,7 @@ export default function App() {
       {isNavigating && (
         <div className="navigation-loading">
           <s-spinner
-            size="small"
+            size={"small" as "base"}
             accessibilityLabel="Loading page"
           />
           <span>Loading...</span>

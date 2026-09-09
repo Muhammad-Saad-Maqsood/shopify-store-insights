@@ -1,0 +1,74 @@
+.form {
+  display: grid;
+  gap: 18px;
+  max-width: 720px;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.field input,
+.field textarea,
+.field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid #c9cccf;
+  border-radius: 8px;
+  background: white;
+  color: #202223;
+  font: inherit;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  outline: none;
+  border-color: #2c6ecb;
+  box-shadow: 0 0 0 1px #2c6ecb;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.inputWithPrefix {
+  position: relative;
+}
+
+.inputWithPrefix > span {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6d7175;
+  pointer-events: none;
+}
+
+.inputWithPrefix input {
+  padding-left: 28px;
+}
+
+.fieldHelp {
+  font-size: 12px;
+  color: #6d7175;
+}
+
+@media (max-width: 600px) {
+  .fieldGrid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,15 @@
+.form {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.form input,
+.form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border: 1px solid #c9cccf;
+  border-radius: 8px;
+  font: inherit;
+}
