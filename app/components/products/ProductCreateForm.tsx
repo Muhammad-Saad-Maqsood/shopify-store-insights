@@ -6,11 +6,13 @@ import styles from "./ProductCreateForm.module.css";
 type ProductCreateFormProps = {
   locations: ProductLocation[];
   isCreating: boolean;
+  onCancel: () => void;
 };
 
 export function ProductCreateForm({
   locations,
   isCreating,
+  onCancel,
 }: ProductCreateFormProps) {
   return (
     <Form method="post" encType="multipart/form-data">
@@ -97,9 +99,15 @@ export function ProductCreateForm({
           </span>
         </div>
 
-        <s-button type="submit" variant="primary" loading={isCreating}>
-          {isCreating ? "Creating product..." : "Create product"}
-        </s-button>
+        <div className={styles.actions}>
+          <s-button type="submit" variant="primary" loading={isCreating}>
+            {isCreating ? "Creating product..." : "Create product"}
+          </s-button>
+
+          <s-button type="button" onClick={onCancel} disabled={isCreating}>
+            Cancel
+          </s-button>
+        </div>
       </div>
     </Form>
   );

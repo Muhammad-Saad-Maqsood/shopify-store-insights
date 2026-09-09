@@ -126,6 +126,9 @@ export const PRODUCT_VARIANT_FOR_UPDATE_QUERY = `#graphql
       variants(first: 1) {
         nodes {
           id
+          inventoryItem {
+            id
+          }
         }
       }
     }

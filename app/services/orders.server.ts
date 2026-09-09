@@ -5,21 +5,38 @@ export type { OrderListItem };
 
 export type OrdersLoaderData = {
   orders: OrderListItem[];
+  error: string | null;
 };
 
 export async function loadOrdersPage(
   admin: AdminGraphqlClient,
 ): Promise<OrdersLoaderData> {
-  const response = await admin.graphql(ORDERS_QUERY);
-  const result = (await response.json()) as {
-    data?: {
-      orders?: {
-        nodes?: OrderListItem[];
+  try {
+    const response = await admin.graphql(ORDERS_QUERY);
+    const result = (await response.json()) as {
+      data?: {
+        orders?: {
+          nodes?: OrderListItem[];
+        };
       };
+      errors?: Array<{ message: string }>;
     };
-  };
 
-  return {
-    orders: result.data?.orders?.nodes ?? [],
-  };
+    if (result.errors?.length) {
+      return {
+        orders: [],
+        error: "Shopify could not load the latest orders.",
+      };
+    }
+
+    return {
+      orders: result.data?.orders?.nodes ?? [],
+      error: null,
+    };
+  } catch {
+    return {
+      orders: [],
+      error: "Unable to connect to Shopify. Try refreshing the page.",
+    };
+  }
 }

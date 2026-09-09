@@ -283,14 +283,17 @@ async function updateProduct(
           variants?: {
             nodes?: Array<{
               id: string;
+              inventoryItem?: {
+                id: string;
+              };
             }>;
           };
         };
       };
     };
 
-    const variantId =
-      variantResult.data?.product?.variants?.nodes?.[0]?.id;
+    const variant = variantResult.data?.product?.variants?.nodes?.[0];
+    const variantId = variant?.id;
 
     if (variantId) {
       const priceResponse = await admin.graphql(
@@ -907,21 +910,64 @@ async function createProduct(
      * first available Shopify location.
      */
 
-    if (variantId && inventory !== undefined) {
-      const inventoryItemId =
-        product.variants?.nodes?.[0]?.inventoryItem?.id;
+    if (inventory !== undefined) {
+      let inventoryItemId = product.variants?.nodes?.[0]?.inventoryItem?.id;
 
-      if (inventoryItemId) {
-        const inventoryError = await setProductInventory({
-          admin,
-          inventoryItemId,
-          locationId,
-          inventory,
-        });
+      // Shopify can create the product before its inventory item is returned
+      // in the mutation payload. Read the first variant as a fallback instead
+      // of silently treating inventory setup as successful.
+      if (!inventoryItemId) {
+        const variantResponse = await admin.graphql(
+          PRODUCT_VARIANT_FOR_UPDATE_QUERY,
+          {
+            variables: {
+              id: product.id,
+            },
+          },
+        );
 
-        if (inventoryError) {
-          return inventoryError;
+        const variantResult = (await variantResponse.json()) as {
+          data?: {
+            product?: {
+              variants?: {
+                nodes?: Array<{
+                  inventoryItem?: {
+                    id: string;
+                  };
+                }>;
+              };
+            };
+          };
+          errors?: Array<{ message: string }>;
+        };
+
+        if (variantResult.errors?.length) {
+          return {
+            success: false,
+            error: variantResult.errors[0].message,
+          };
         }
+
+        inventoryItemId =
+          variantResult.data?.product?.variants?.nodes?.[0]?.inventoryItem?.id;
+      }
+
+      if (!inventoryItemId) {
+        return {
+          success: false,
+          error: "Shopify did not return an inventory item for the new product.",
+        };
+      }
+
+      const inventoryError = await setProductInventory({
+        admin,
+        inventoryItemId,
+        locationId,
+        inventory,
+      });
+
+      if (inventoryError) {
+        return inventoryError;
       }
     }
 

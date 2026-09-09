@@ -67,6 +67,12 @@
   color: #6d7175;
 }
 
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 @media (max-width: 600px) {
   .fieldGrid {
     grid-template-columns: 1fr;

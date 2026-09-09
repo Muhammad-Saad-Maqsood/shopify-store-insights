@@ -14,6 +14,13 @@
   font-size: 13px;
 }
 
+.createIntro {
+  max-width: 620px;
+  margin: 0 0 18px;
+  color: #616161;
+  font-size: 14px;
+}
+
 .emptyState {
   padding: 36px 20px;
   text-align: center;
