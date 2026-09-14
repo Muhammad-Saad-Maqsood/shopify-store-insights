@@ -11,6 +11,7 @@ import {
   PRODUCT_DELETE_MUTATION,
   PRODUCT_UPDATE_MUTATION,
   PRODUCT_VARIANT_FOR_UPDATE_QUERY,
+  PRODUCT_VARIANTS_QUERY,
   PRODUCTS_QUERY,
   STAGED_UPLOAD_MUTATION,
   UPDATE_VARIANT_PRICE_MUTATION,
@@ -19,9 +20,17 @@ import type {
   AdminGraphqlClient,
   ProductListItem,
   ProductLocation,
+  ProductVariantItem,
+  ProductVariantsData,
 } from "../types";
 
-export type { AdminGraphqlClient, ProductListItem, ProductLocation };
+export type {
+  AdminGraphqlClient,
+  ProductListItem,
+  ProductLocation,
+  ProductVariantItem,
+  ProductVariantsData,
+};
 
 export type ProductsLoaderData = {
   products: ProductListItem[];
@@ -131,6 +140,78 @@ export async function loadProductsPage(
       products: [],
       locations: [],
       error: "Unable to connect to Shopify.",
+    };
+  }
+}
+
+export async function getProductVariants(
+  admin: AdminGraphqlClient,
+  productId: string,
+): Promise<ProductVariantsData> {
+  const emptyResult = {
+    productId,
+    productTitle: "",
+    variants: [] as ProductVariantItem[],
+  };
+
+  if (!productId) {
+    return {
+      ...emptyResult,
+      error: "Product ID is required.",
+    };
+  }
+
+  try {
+    const response = await admin.graphql(PRODUCT_VARIANTS_QUERY, {
+      variables: {
+        productId,
+      },
+    });
+
+    const result = (await response.json()) as {
+      data?: {
+        product?: {
+          id: string;
+          title: string;
+          variants?: {
+            nodes?: ProductVariantItem[];
+          };
+        } | null;
+      };
+      errors?: Array<{ message: string }>;
+    };
+
+    if (result.errors?.length) {
+      return {
+        ...emptyResult,
+        error:
+          result.errors[0]?.message ??
+          "Shopify could not load the variant inventory.",
+      };
+    }
+
+    const product = result.data?.product;
+
+    if (!product) {
+      return {
+        ...emptyResult,
+        error: "This product is no longer available.",
+      };
+    }
+
+    return {
+      productId: product.id,
+      productTitle: product.title,
+      variants: product.variants?.nodes ?? [],
+      error: null,
+    };
+  } catch (error) {
+    return {
+      ...emptyResult,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to load variant inventory.",
     };
   }
 }

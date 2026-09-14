@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Form } from "react-router";
 
 import type { ProductListItem } from "../../types";
 import { ProductEditForm } from "./ProductEditForm";
+import { VariantInventory } from "./VariantInventory";
 import styles from "./ProductCard.module.css";
 
 type ProductCardProps = {
@@ -16,6 +18,7 @@ export function ProductCard({
   onEditToggle,
 }: ProductCardProps) {
   const price = product.variants?.nodes?.[0]?.price;
+  const [isVariantsOpen, setIsVariantsOpen] = useState(false);
 
   return (
     <article className={styles.card}>
@@ -40,6 +43,22 @@ export function ProductCard({
 
           <span>{product.totalInventory ?? 0} units</span>
         </div>
+
+        <div className={styles.variantsRow}>
+          <s-button onClick={() => setIsVariantsOpen(!isVariantsOpen)}>
+            {isVariantsOpen ? "Hide variants" : "View variants"}
+          </s-button>
+        </div>
+
+        {isVariantsOpen && (
+          <div className={styles.variantsPanel}>
+            <VariantInventory
+              productId={product.id}
+              productTitle={product.title}
+              onClose={() => setIsVariantsOpen(false)}
+            />
+          </div>
+        )}
 
         <div className={styles.actions}>
           {isEditOpen ? (

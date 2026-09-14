@@ -1,0 +1,31 @@
+Handle,Title,Body (HTML),Vendor,Type,Tags,Published,Option1 Name,Option1 Value,Option2 Name,Option2 Value,Option3 Name,Option3 Value,Variant SKU,Variant Grams,Variant Inventory Tracker,Variant Inventory Qty,Variant Inventory Policy,Variant Fulfillment Service,Variant Price,Variant Compare At Price,Variant Requires Shipping,Variant Taxable,Variant Barcode,Gift Card,Variant Weight Unit,Status
+canvas-hoodie,Canvas Hoodie,<p>Heavyweight hoodie with size variants.</p>,Saad's Store,Apparel,demo,TRUE,Size,Small,,,,,HOOD-S,500,shopify,9,deny,manual,59.00,,TRUE,TRUE,,FALSE,g,active
+canvas-hoodie,,,,,,,,Medium,,,,,HOOD-M,550,shopify,5,deny,manual,59.00,,TRUE,TRUE,,FALSE,g,active
+canvas-hoodie,,,,,,,,Large,,,,,HOOD-L,600,shopify,1,deny,manual,59.00,,TRUE,TRUE,,FALSE,g,active
+canvas-hoodie,,,,,,,,XL,,,,,HOOD-XL,650,shopify,0,deny,manual,62.00,,TRUE,TRUE,,FALSE,g,active
+wallet,Wallet,<p>Leather bifold wallet.</p>,Saad's Store,Accessories,demo,TRUE,Color,Black,,,,,WALLET-BLK,120,shopify,20,deny,manual,45.00,,TRUE,TRUE,,FALSE,g,active
+wallet,,,,,,,,Brown,,,,,WALLET-BRN,120,shopify,18,deny,manual,45.00,,TRUE,TRUE,,FALSE,g,active
+wallet,,,,,,,,Tan,,,,,WALLET-TAN,120,shopify,12,deny,manual,45.00,,TRUE,TRUE,,FALSE,g,active
+wallet,,,,,,,,Navy,,,,,WALLET-NVY,120,shopify,0,deny,manual,45.00,,TRUE,TRUE,,FALSE,g,active
+premium-jacket,Premium Jacket,<p>Insulated everyday jacket.</p>,Saad's Store,Apparel,demo,TRUE,Size,Small,,,,,JKT-S,800,shopify,8,deny,manual,89.00,,TRUE,TRUE,,FALSE,g,active
+premium-jacket,,,,,,,,Medium,,,,,JKT-M,850,shopify,10,deny,manual,89.00,,TRUE,TRUE,,FALSE,g,active
+premium-jacket,,,,,,,,Large,,,,,JKT-L,900,shopify,5,deny,manual,89.00,,TRUE,TRUE,,FALSE,g,active
+premium-jacket,,,,,,,,XL,,,,,JKT-XL,950,shopify,2,deny,manual,92.00,,TRUE,TRUE,,FALSE,g,active
+everyday-cap,Everyday Cap,<p>Classic baseball cap.</p>,Saad's Store,Baseball Caps,demo,TRUE,Color,Navy,,,,,CAP-NVY,90,shopify,15,deny,manual,24.00,,TRUE,TRUE,,FALSE,g,active
+everyday-cap,,,,,,,,Black,,,,,CAP-BLK,90,shopify,14,deny,manual,24.00,,TRUE,TRUE,,FALSE,g,active
+everyday-cap,,,,,,,,Khaki,,,,,CAP-KHK,90,shopify,10,deny,manual,24.00,,TRUE,TRUE,,FALSE,g,active
+everyday-cap,,,,,,,,White,,,,,CAP-WHT,90,shopify,5,deny,manual,24.00,,TRUE,TRUE,,FALSE,g,active
+sneakers,Sneakers,<p>Everyday sneakers.</p>,Saad's Store,Sneakers,demo,TRUE,Size,8,,,,,SNK-8,700,shopify,12,deny,manual,79.00,,TRUE,TRUE,,FALSE,g,active
+sneakers,,,,,,,,9,,,,,SNK-9,720,shopify,15,deny,manual,79.00,,TRUE,TRUE,,FALSE,g,active
+sneakers,,,,,,,,10,,,,,SNK-10,740,shopify,10,deny,manual,79.00,,TRUE,TRUE,,FALSE,g,active
+sneakers,,,,,,,,11,,,,,SNK-11,760,shopify,3,deny,manual,79.00,,TRUE,TRUE,,FALSE,g,active
+sneakers,,,,,,,,12,,,,,SNK-12,780,shopify,0,deny,manual,79.00,,TRUE,TRUE,,FALSE,g,active
+canvas-backpack,Canvas Backpack,<p>Everyday canvas backpack.</p>,Saad's Store,Backpacks,demo,TRUE,Color,Black,,,,,BP-BLK,600,shopify,12,deny,manual,49.00,,TRUE,TRUE,,FALSE,g,active
+canvas-backpack,,,,,,,,Olive,,,,,BP-OLV,600,shopify,10,deny,manual,49.00,,TRUE,TRUE,,FALSE,g,active
+canvas-backpack,,,,,,,,Grey,,,,,BP-GRY,600,shopify,7,deny,manual,49.00,,TRUE,TRUE,,FALSE,g,active
+canvas-backpack,,,,,,,,Sand,,,,,BP-SND,600,shopify,0,deny,manual,49.00,,TRUE,TRUE,,FALSE,g,active
+premium-t-shirt,Premium T-Shirt,<p>Soft cotton tee for demoing variant inventory.</p>,Store Insights,Apparel,demo,TRUE,Size,Small,Color,Black,,,PREM-TS-S-BLK,200,shopify,18,deny,manual,29.00,,TRUE,TRUE,,FALSE,g,active
+premium-t-shirt,,,,,,,,Medium,,Black,,,PREM-TS-M-BLK,220,shopify,12,deny,manual,29.00,,TRUE,TRUE,,FALSE,g,active
+premium-t-shirt,,,,,,,,Large,,Black,,,PREM-TS-L-BLK,240,shopify,7,deny,manual,29.00,,TRUE,TRUE,,FALSE,g,active
+premium-t-shirt,,,,,,,,XL,,Black,,,PREM-TS-XL-BLK,260,shopify,3,deny,manual,31.00,,TRUE,TRUE,,FALSE,g,active
+premium-t-shirt,,,,,,,,Small,,White,,,PREM-TS-S-WHT,200,shopify,0,deny,manual,29.00,,TRUE,TRUE,,FALSE,g,active

@@ -51,6 +51,14 @@
   color: inherit;
 }
 
+.variantsRow {
+  margin-top: 14px;
+}
+
+.variantsPanel {
+  margin-top: 12px;
+}
+
 .actions {
   display: flex;
   gap: 10px;

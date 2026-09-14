@@ -15,6 +15,24 @@ export type ProductListItem = {
   };
 };
 
+export type ProductVariantItem = {
+  id: string;
+  title: string;
+  price: string;
+  inventoryQuantity: number | null;
+  selectedOptions?: Array<{
+    name: string;
+    value: string;
+  }>;
+};
+
+export type ProductVariantsData = {
+  productId: string;
+  productTitle: string;
+  variants: ProductVariantItem[];
+  error: string | null;
+};
+
 export type ProductLocation = {
   id: string;
   name: string;

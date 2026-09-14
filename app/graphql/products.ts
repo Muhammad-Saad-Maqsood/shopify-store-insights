@@ -21,6 +21,27 @@ export const PRODUCTS_QUERY = `#graphql
   }
 `;
 
+export const PRODUCT_VARIANTS_QUERY = `#graphql
+  query ProductVariants($productId: ID!) {
+    product(id: $productId) {
+      id
+      title
+      variants(first: 50) {
+        nodes {
+          id
+          title
+          price
+          inventoryQuantity
+          selectedOptions {
+            name
+            value
+          }
+        }
+      }
+    }
+  }
+`;
+
 export const LOCATIONS_QUERY = `#graphql
   query ProductLocations {
     locations(first: 10) {
