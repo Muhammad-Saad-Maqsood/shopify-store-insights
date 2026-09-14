@@ -5,6 +5,7 @@ export const PRODUCTS_QUERY = `#graphql
         id
         title
         status
+        description
         totalInventory
         featuredImage {
           url

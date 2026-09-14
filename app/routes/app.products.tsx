@@ -51,8 +51,9 @@ export default function ProductsPage() {
 
     if (actionData.success) {
       setOpenEditId(null);
+
       const message =
-        "message" in actionData
+        "message" in actionData && actionData.message
           ? actionData.message
           : "Product created successfully.";
 
@@ -61,12 +62,19 @@ export default function ProductsPage() {
       }
 
       setFeedback({ heading: "Success", message, tone: "success" });
-      shopify.toast.show(message);
+
+      try {
+        shopify.toast.show(message);
+      } catch {
+        // Toast is optional; page banner already shows success.
+      }
       return;
     }
 
     const message =
-      "message" in actionData ? actionData.message : actionData.error;
+      ("message" in actionData && actionData.message) ||
+      ("error" in actionData && actionData.error) ||
+      "Something went wrong.";
 
     setFeedback({ heading: "Action failed", message, tone: "critical" });
   }, [actionData, shopify]);

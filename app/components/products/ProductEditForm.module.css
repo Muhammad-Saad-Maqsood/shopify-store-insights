@@ -1,7 +1,6 @@
 .form {
   display: grid;
   gap: 8px;
-  margin-top: 10px;
 }
 
 .form input,
@@ -12,4 +11,10 @@
   border: 1px solid #c9cccf;
   border-radius: 8px;
   font: inherit;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }

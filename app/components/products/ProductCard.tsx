@@ -42,21 +42,19 @@ export function ProductCard({
         </div>
 
         <div className={styles.actions}>
-          <details
-            className={styles.editDetails}
-            open={isEditOpen}
-            onToggle={(event) => {
-              onEditToggle(event.currentTarget.open ? product.id : null);
-            }}
-          >
-            <summary>Edit</summary>
-
-            <ProductEditForm
-              productId={product.id}
-              title={product.title}
-              price={price}
-            />
-          </details>
+          {isEditOpen ? (
+            <div className={styles.editPanel}>
+              <ProductEditForm
+                productId={product.id}
+                title={product.title}
+                description={product.description}
+                price={price}
+                onCancel={() => onEditToggle(null)}
+              />
+            </div>
+          ) : (
+            <s-button onClick={() => onEditToggle(product.id)}>Edit</s-button>
+          )}
 
           <Form
             method="post"
@@ -67,9 +65,7 @@ export function ProductCard({
             }}
           >
             <input type="hidden" name="intent" value="delete" />
-
             <input type="hidden" name="productId" value={product.id} />
-
             <s-button type="submit">Delete</s-button>
           </Form>
         </div>

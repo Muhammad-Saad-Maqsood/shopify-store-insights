@@ -33,4 +33,7 @@ database.sqlite
 .cursor/
 .gemini/
 .mcp.json
+.agents/*
+.agents/.env
+skills-lock.json
 context.md

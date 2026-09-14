@@ -2,6 +2,7 @@ export type ProductListItem = {
   id: string;
   title: string;
   status: string;
+  description?: string | null;
   totalInventory: number | null;
   featuredImage?: {
     url: string;

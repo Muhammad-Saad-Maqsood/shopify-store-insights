@@ -56,14 +56,9 @@
   gap: 10px;
   align-items: flex-start;
   margin-top: 14px;
+  flex-wrap: wrap;
 }
 
-.editDetails {
-  flex: 1;
-}
-
-.editDetails summary {
-  cursor: pointer;
-  font-weight: 600;
-  margin-bottom: 10px;
+.editPanel {
+  flex: 1 1 100%;
 }

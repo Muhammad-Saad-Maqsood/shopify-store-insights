@@ -1,22 +1,31 @@
-import { Form } from "react-router";
+import { Form, useNavigation } from "react-router";
 
 import styles from "./ProductEditForm.module.css";
 
 type ProductEditFormProps = {
   productId: string;
   title: string;
+  description?: string | null;
   price?: string;
+  onCancel: () => void;
 };
 
 export function ProductEditForm({
   productId,
   title,
+  description,
   price,
+  onCancel,
 }: ProductEditFormProps) {
+  const navigation = useNavigation();
+  const isSaving =
+    navigation.state === "submitting" &&
+    navigation.formData?.get("intent") === "update" &&
+    navigation.formData?.get("productId") === productId;
+
   return (
     <Form method="post" className={styles.form}>
       <input type="hidden" name="intent" value="update" />
-
       <input type="hidden" name="productId" value={productId} />
 
       <input
@@ -36,11 +45,21 @@ export function ProductEditForm({
         required
       />
 
-      <textarea name="description" placeholder="Description" rows={3} />
+      <textarea
+        name="description"
+        defaultValue={description ?? ""}
+        placeholder="Description"
+        rows={3}
+      />
 
-      <s-button type="submit" variant="primary">
-        Save changes
-      </s-button>
+      <div className={styles.actions}>
+        <s-button type="submit" variant="primary">
+          {isSaving ? "Saving..." : "Save changes"}
+        </s-button>
+        <s-button type="button" onClick={onCancel}>
+          Cancel
+        </s-button>
+      </div>
     </Form>
   );
 }
