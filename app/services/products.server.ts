@@ -315,6 +315,47 @@ function parseVariantPriceUpdates(formData: FormData) {
   };
 }
 
+function parseVariantInventoryUpdate(formData: FormData): {
+  error: string | null;
+  variantId: string;
+  inventory: number | null;
+} {
+  const variantId = String(formData.get("variantId") || "").trim();
+  const inventoryValue = String(formData.get("variantInventory") || "").trim();
+
+  if (!variantId) {
+    return {
+      error: "Select a variant to update.",
+      variantId: "",
+      inventory: null,
+    };
+  }
+
+  if (inventoryValue === "") {
+    return {
+      error: "Enter inventory for the selected variant.",
+      variantId,
+      inventory: null,
+    };
+  }
+
+  const inventory = Number(inventoryValue);
+
+  if (!Number.isInteger(inventory) || inventory < 0) {
+    return {
+      error: "Inventory must be a whole number of 0 or greater.",
+      variantId,
+      inventory: null,
+    };
+  }
+
+  return {
+    error: null,
+    variantId,
+    inventory,
+  };
+}
+
 async function updateProduct(
   admin: AdminGraphqlClient,
   formData: FormData,
@@ -324,6 +365,11 @@ async function updateProduct(
   const description = String(formData.get("description") || "").trim();
   const { error: variantParseError, updates: submittedVariantUpdates } =
     parseVariantPriceUpdates(formData);
+  const {
+    error: inventoryParseError,
+    variantId: inventoryVariantId,
+    inventory: variantInventory,
+  } = parseVariantInventoryUpdate(formData);
 
   if (!productId) {
     return {
@@ -346,10 +392,24 @@ async function updateProduct(
     };
   }
 
+  if (inventoryParseError) {
+    return {
+      success: false,
+      message: inventoryParseError,
+    };
+  }
+
   if (submittedVariantUpdates.length === 0) {
     return {
       success: false,
       message: "Select a variant and enter a price.",
+    };
+  }
+
+  if (variantInventory === null) {
+    return {
+      success: false,
+      message: "Enter inventory for the selected variant.",
     };
   }
 
@@ -431,9 +491,46 @@ async function updateProduct(
       }
     }
 
+    const variantsData = await getProductVariants(admin, productId);
+    const selectedVariant = variantsData.variants.find(
+      (variant) => variant.id === inventoryVariantId,
+    );
+    const inventoryItemId = selectedVariant?.inventoryItem?.id;
+
+    if (!inventoryItemId) {
+      return {
+        success: false,
+        message:
+          "Shopify did not return an inventory item for the selected variant.",
+      };
+    }
+
+    const fulfillmentLocationId =
+      (await resolveFulfillmentLocationId(admin)) ?? "";
+
+    const inventoryError = await setProductInventory({
+      admin,
+      inventoryItemId,
+      locationId: fulfillmentLocationId,
+      inventory: variantInventory,
+    });
+
+    if (inventoryError) {
+      const inventoryMessage =
+        ("error" in inventoryError && inventoryError.error) ||
+        ("message" in inventoryError && inventoryError.message) ||
+        "Unable to update inventory.";
+
+      return {
+        success: false,
+        message: inventoryMessage,
+      };
+    }
+
     const storefrontError = await ensureProductStorefrontReady(
       admin,
       productId,
+      fulfillmentLocationId,
     );
 
     if (storefrontError) {

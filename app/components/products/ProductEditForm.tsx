@@ -44,6 +44,7 @@ export function ProductEditForm({
 
   const [selectedVariantId, setSelectedVariantId] = useState("");
   const [variantPrice, setVariantPrice] = useState("");
+  const [variantInventory, setVariantInventory] = useState("");
 
   useEffect(() => {
     if (variantsFetcher.state === "idle" && !variantsFetcher.data) {
@@ -63,6 +64,7 @@ export function ProductEditForm({
 
     setSelectedVariantId(variants[0].id);
     setVariantPrice(variants[0].price);
+    setVariantInventory(String(variants[0].inventoryQuantity ?? 0));
   }, [variants, selectedVariantId]);
 
   const isSaving =
@@ -79,6 +81,7 @@ export function ProductEditForm({
 
     setSelectedVariantId(variant.id);
     setVariantPrice(variant.price);
+    setVariantInventory(String(variant.inventoryQuantity ?? 0));
   }
 
   return (
@@ -112,7 +115,7 @@ export function ProductEditForm({
       </div>
 
       <div className={styles.field}>
-        <span className={styles.sectionLabel}>Variant price</span>
+        <span className={styles.sectionLabel}>Variant details</span>
 
         {isLoadingVariants && (
           <div className={styles.variantStatus} aria-live="polite">
@@ -153,21 +156,42 @@ export function ProductEditForm({
               ))}
             </select>
 
-            <label htmlFor={`variant-price-${productId}`}>Price</label>
+            <div className={styles.fieldGrid}>
+              <div className={styles.field}>
+                <label htmlFor={`variant-price-${productId}`}>Price</label>
 
-            <div className={styles.inputWithPrefix}>
-              <span>$</span>
+                <div className={styles.inputWithPrefix}>
+                  <span>$</span>
 
-              <input
-                id={`variant-price-${productId}`}
-                name="variantPrice"
-                type="number"
-                min="0"
-                step="0.01"
-                value={variantPrice}
-                onChange={(event) => setVariantPrice(event.target.value)}
-                required
-              />
+                  <input
+                    id={`variant-price-${productId}`}
+                    name="variantPrice"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={variantPrice}
+                    onChange={(event) => setVariantPrice(event.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className={styles.field}>
+                <label htmlFor={`variant-inventory-${productId}`}>
+                  Inventory
+                </label>
+
+                <input
+                  id={`variant-inventory-${productId}`}
+                  name="variantInventory"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={variantInventory}
+                  onChange={(event) => setVariantInventory(event.target.value)}
+                  required
+                />
+              </div>
             </div>
           </>
         )}

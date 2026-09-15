@@ -32,6 +32,7 @@
   data-store-insights-stock
   data-threshold="{{ threshold }}"
   data-initial-variant-id="{{ current_variant.id }}"
+  data-option-names="{{ product.options | join: '|' | escape }}"
 >
   <p
     class="store-insights-stock__message{% if initial_tone != blank %} store-insights-stock__message--{{ initial_tone }}{% endif %}"
@@ -47,8 +48,13 @@
       {%- for variant in product.variants -%}
         {
           "id": {{ variant.id | json }},
+          "available": {{ variant.available | json }},
           "inventory_management": {{ variant.inventory_management | json }},
-          "inventory_quantity": {{ variant.inventory_quantity | json }}
+          "inventory_quantity": {{ variant.inventory_quantity | json }},
+          "option1": {{ variant.option1 | json }},
+          "option2": {{ variant.option2 | json }},
+          "option3": {{ variant.option3 | json }},
+          "options": {{ variant.options | json }}
         }{%- unless forloop.last -%},{%- endunless -%}
       {%- endfor -%}
     ]

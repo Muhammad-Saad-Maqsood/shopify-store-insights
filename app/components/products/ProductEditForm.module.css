@@ -8,6 +8,18 @@
   gap: 7px;
 }
 
+.fieldGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 520px) {
+  .fieldGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .field label {
   font-size: 13px;
   font-weight: 600;
