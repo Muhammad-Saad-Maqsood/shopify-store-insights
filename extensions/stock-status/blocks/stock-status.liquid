@@ -1,21 +1,59 @@
 {%- assign current_variant = product.selected_or_first_available_variant -%}
+{%- assign threshold = block.settings.low_stock_threshold -%}
+
+{%- capture initial_message -%}
+  {%- if current_variant.inventory_management == 'shopify' -%}
+    {%- assign qty = current_variant.inventory_quantity -%}
+    {%- if qty <= 0 -%}
+      Out of stock
+    {%- elsif qty <= threshold -%}
+      Only {{ qty }} left
+    {%- else -%}
+      In stock
+    {%- endif -%}
+  {%- endif -%}
+{%- endcapture -%}
+
+{%- capture initial_tone -%}
+  {%- if current_variant.inventory_management == 'shopify' -%}
+    {%- assign qty = current_variant.inventory_quantity -%}
+    {%- if qty <= 0 -%}
+      critical
+    {%- elsif qty <= threshold -%}
+      warning
+    {%- else -%}
+      success
+    {%- endif -%}
+  {%- endif -%}
+{%- endcapture -%}
 
 <div
   class="store-insights-stock"
   data-store-insights-stock
-  data-threshold="{{ block.settings.low_stock_threshold }}"
+  data-threshold="{{ threshold }}"
   data-initial-variant-id="{{ current_variant.id }}"
 >
   <p
-    class="store-insights-stock__message"
+    class="store-insights-stock__message{% if initial_tone != blank %} store-insights-stock__message--{{ initial_tone }}{% endif %}"
     data-store-insights-stock-message
     aria-live="polite"
-  ></p>
-</div>
+    {% if initial_message == blank %}hidden{% endif %}
+  >
+    {{- initial_message -}}
+  </p>
 
-<script type="application/json" data-store-insights-stock-variants>
-  {{ product.variants | json }}
-</script>
+  <script type="application/json" data-store-insights-stock-variants>
+    [
+      {%- for variant in product.variants -%}
+        {
+          "id": {{ variant.id | json }},
+          "inventory_management": {{ variant.inventory_management | json }},
+          "inventory_quantity": {{ variant.inventory_quantity | json }}
+        }{%- unless forloop.last -%},{%- endunless -%}
+      {%- endfor -%}
+    ]
+  </script>
+</div>
 
 {% schema %}
 {
