@@ -7,7 +7,7 @@ import {
   useLoaderData,
   useRevalidator,
 } from "react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 
 import { ProductCard } from "../components/products/ProductCard";
@@ -46,6 +46,9 @@ export default function ProductsPage() {
   const [openEditId, setOpenEditId] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [catalogRevision, setCatalogRevision] = useState(0);
+  const pendingSubmitRef = useRef(false);
+  const handledResultRef = useRef<ProductActionResult | null>(null);
 
   const actionData = fetcher.data;
   const isSubmitting = fetcher.state !== "idle";
@@ -53,7 +56,22 @@ export default function ProductsPage() {
     isSubmitting && fetcher.formData?.get("intent") === "create";
 
   useEffect(() => {
-    if (!actionData) return;
+    if (fetcher.state === "submitting" && fetcher.formData) {
+      pendingSubmitRef.current = true;
+    }
+  }, [fetcher.state, fetcher.formData]);
+
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !actionData || !pendingSubmitRef.current) {
+      return;
+    }
+
+    if (handledResultRef.current === actionData) {
+      return;
+    }
+
+    handledResultRef.current = actionData;
+    pendingSubmitRef.current = false;
 
     if (actionData.success) {
       setOpenEditId(null);
@@ -68,6 +86,8 @@ export default function ProductsPage() {
       }
 
       setFeedback({ heading: "Success", message, tone: "success" });
+      setCatalogRevision((value) => value + 1);
+      revalidator.revalidate();
 
       try {
         shopify.toast.show(message);
@@ -83,14 +103,7 @@ export default function ProductsPage() {
       "Something went wrong.";
 
     setFeedback({ heading: "Action failed", message, tone: "critical" });
-  }, [actionData, shopify]);
-
-  useEffect(() => {
-    // Only refresh the catalog after a form submission — not on every mount.
-    if (fetcher.state === "idle" && fetcher.data && fetcher.formData) {
-      revalidator.revalidate();
-    }
-  }, [fetcher.state, fetcher.data, fetcher.formData, revalidator]);
+  }, [actionData, fetcher.state, revalidator, shopify]);
 
   useEffect(() => {
     if (!feedback) return;
@@ -157,6 +170,7 @@ export default function ProductsPage() {
                 key={product.id}
                 product={product}
                 fetcher={fetcher}
+                catalogRevision={catalogRevision}
                 isEditOpen={openEditId === product.id}
                 onEditToggle={setOpenEditId}
               />

@@ -10,6 +10,7 @@ import styles from "./ProductCard.module.css";
 type ProductCardProps = {
   product: ProductListItem;
   fetcher: FetcherWithComponents<ProductActionResult>;
+  catalogRevision: number;
   isEditOpen: boolean;
   onEditToggle: (productId: string | null) => void;
 };
@@ -17,6 +18,7 @@ type ProductCardProps = {
 export function ProductCard({
   product,
   fetcher,
+  catalogRevision,
   isEditOpen,
   onEditToggle,
 }: ProductCardProps) {
@@ -61,6 +63,7 @@ export function ProductCard({
         {isVariantsOpen && (
           <div className={styles.variantsPanel}>
             <VariantInventory
+              key={`${product.id}-${catalogRevision}-${product.totalInventory}-${price ?? "0"}`}
               productId={product.id}
               productTitle={product.title}
               onClose={() => setIsVariantsOpen(false)}
@@ -72,6 +75,7 @@ export function ProductCard({
           {isEditOpen ? (
             <div className={styles.editPanel}>
               <ProductEditForm
+                key={`${product.id}-${catalogRevision}`}
                 fetcher={fetcher}
                 productId={product.id}
                 title={product.title}

@@ -47,10 +47,9 @@ export function ProductEditForm({
   const [variantInventory, setVariantInventory] = useState("");
 
   useEffect(() => {
-    if (variantsFetcher.state === "idle" && !variantsFetcher.data) {
-      variantsFetcher.load(variantsPath);
-    }
-  }, [variantsFetcher, variantsPath]);
+    variantsFetcher.load(variantsPath);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetcher identity is unstable
+  }, [variantsPath]);
 
   const data = variantsFetcher.data;
   const variants = data?.variants ?? [];

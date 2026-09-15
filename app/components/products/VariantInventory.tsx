@@ -63,10 +63,10 @@ export function VariantInventory({
   )}`;
 
   useEffect(() => {
-    if (fetcher.state === "idle" && !fetcher.data) {
-      fetcher.load(variantsPath);
-    }
-  }, [fetcher, variantsPath]);
+    fetcher.load(variantsPath);
+    // Reload whenever this panel mounts or the product changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetcher identity is unstable
+  }, [variantsPath]);
 
   function renderContent() {
     const data = fetcher.data;
