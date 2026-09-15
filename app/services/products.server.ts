@@ -46,10 +46,23 @@ export type ProductsLoaderData = {
   error: string | null;
 };
 
+export type ProductUpdateSnapshot = {
+  id: string;
+  title: string;
+  description: string;
+  totalInventory: number;
+  variant: {
+    id: string;
+    price: string;
+    inventoryQuantity: number;
+  };
+};
+
 export type ProductActionResult =
   | {
       success: true;
       message: string;
+      productUpdate?: ProductUpdateSnapshot;
     }
   | {
       success: false;
@@ -540,9 +553,27 @@ async function updateProduct(
       };
     }
 
+    const previousQuantity = selectedVariant.inventoryQuantity ?? 0;
+    const previousTotal = variantsData.variants.reduce(
+      (total, variant) => total + (variant.inventoryQuantity ?? 0),
+      0,
+    );
+    const nextPrice = submittedVariantUpdates[0]?.price ?? selectedVariant.price;
+
     return {
       success: true,
       message: "Product updated successfully.",
+      productUpdate: {
+        id: productId,
+        title,
+        description,
+        totalInventory: previousTotal - previousQuantity + variantInventory,
+        variant: {
+          id: inventoryVariantId,
+          price: nextPrice,
+          inventoryQuantity: variantInventory,
+        },
+      },
     };
   } catch (error) {
     return {

@@ -17,6 +17,7 @@ import {
   handleProductAction,
   loadProductsPage,
   type ProductActionResult,
+  type ProductUpdateSnapshot,
 } from "../services/products.server";
 import { authenticate } from "../shopify.server";
 
@@ -46,7 +47,9 @@ export default function ProductsPage() {
   const [openEditId, setOpenEditId] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const [catalogRevision, setCatalogRevision] = useState(0);
+  const [productUpdates, setProductUpdates] = useState<
+    Record<string, ProductUpdateSnapshot>
+  >({});
   const pendingSubmitRef = useRef(false);
   const handledResultRef = useRef<ProductActionResult | null>(null);
 
@@ -85,8 +88,15 @@ export default function ProductsPage() {
         setIsCreateOpen(false);
       }
 
+      if ("productUpdate" in actionData && actionData.productUpdate) {
+        setProductUpdates((current) => ({
+          ...current,
+          [actionData.productUpdate!.id]: actionData.productUpdate!,
+        }));
+      }
+
       setFeedback({ heading: "Success", message, tone: "success" });
-      setCatalogRevision((value) => value + 1);
+      // Background sync with Shopify — UI already updated from productUpdate.
       revalidator.revalidate();
 
       try {
@@ -170,7 +180,7 @@ export default function ProductsPage() {
                 key={product.id}
                 product={product}
                 fetcher={fetcher}
-                catalogRevision={catalogRevision}
+                productUpdate={productUpdates[product.id] ?? null}
                 isEditOpen={openEditId === product.id}
                 onEditToggle={setOpenEditId}
               />

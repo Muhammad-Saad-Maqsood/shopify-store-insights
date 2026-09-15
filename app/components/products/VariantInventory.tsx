@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useFetcher } from "react-router";
 
 import type { ProductVariantItem, ProductVariantsData } from "../../types";
@@ -7,9 +7,16 @@ import styles from "./VariantInventory.module.css";
 const LOW_STOCK_THRESHOLD = 5;
 const DEFAULT_VARIANT_TITLE = "Default Title";
 
+type VariantPatch = {
+  id: string;
+  price: string;
+  inventoryQuantity: number;
+};
+
 type VariantInventoryProps = {
   productId: string;
   productTitle: string;
+  variantPatch?: VariantPatch | null;
   onClose: () => void;
 };
 
@@ -52,26 +59,70 @@ function totalUnits(variants: ProductVariantItem[]) {
   );
 }
 
+function applyVariantPatch(
+  variants: ProductVariantItem[],
+  patch: VariantPatch | null | undefined,
+) {
+  if (!patch) {
+    return variants;
+  }
+
+  return variants.map((variant) =>
+    variant.id === patch.id
+      ? {
+          ...variant,
+          price: patch.price,
+          inventoryQuantity: patch.inventoryQuantity,
+        }
+      : variant,
+  );
+}
+
 export function VariantInventory({
   productId,
   productTitle,
+  variantPatch = null,
   onClose,
 }: VariantInventoryProps) {
   const fetcher = useFetcher<ProductVariantsData>();
   const variantsPath = `/app/product-variants?productId=${encodeURIComponent(
     productId,
   )}`;
+  const [variants, setVariants] = useState<ProductVariantItem[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
     fetcher.load(variantsPath);
-    // Reload whenever this panel mounts or the product changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetcher identity is unstable
   }, [variantsPath]);
 
-  function renderContent() {
-    const data = fetcher.data;
+  useEffect(() => {
+    if (!fetcher.data || fetcher.state !== "idle") {
+      return;
+    }
 
-    if (fetcher.state !== "idle" || !data) {
+    if (fetcher.data.error) {
+      setLoadError(fetcher.data.error);
+      setHasLoaded(true);
+      return;
+    }
+
+    setLoadError(null);
+    setVariants(applyVariantPatch(fetcher.data.variants, variantPatch));
+    setHasLoaded(true);
+  }, [fetcher.data, fetcher.state, variantPatch]);
+
+  useEffect(() => {
+    if (!variantPatch || !hasLoaded) {
+      return;
+    }
+
+    setVariants((current) => applyVariantPatch(current, variantPatch));
+  }, [variantPatch, hasLoaded]);
+
+  function renderContent() {
+    if (!hasLoaded || (fetcher.state !== "idle" && variants.length === 0)) {
       return (
         <div className={styles.status} aria-live="polite">
           <s-spinner
@@ -84,11 +135,11 @@ export function VariantInventory({
       );
     }
 
-    if (data.error) {
+    if (loadError) {
       return (
         <div className={styles.status}>
           <s-banner heading="Unable to load variants" tone="critical">
-            {data.error}
+            {loadError}
           </s-banner>
 
           <s-button onClick={() => fetcher.load(variantsPath)}>Retry</s-button>
@@ -96,18 +147,18 @@ export function VariantInventory({
       );
     }
 
-    const variants = data.variants.filter(
+    const visibleVariants = variants.filter(
       (variant) => variantLabel(variant) !== null,
     );
 
-    if (variants.length === 0) {
+    if (visibleVariants.length === 0) {
       return (
         <div className={styles.status}>
           <strong>No variant inventory available.</strong>
 
           <span>
             This product uses the default Shopify variant with{" "}
-            {totalUnits(data.variants)} units in stock.
+            {totalUnits(variants)} units in stock.
           </span>
         </div>
       );
@@ -125,7 +176,7 @@ export function VariantInventory({
           </thead>
 
           <tbody>
-            {variants.map((variant) => {
+            {visibleVariants.map((variant) => {
               const quantity = variant.inventoryQuantity ?? 0;
               const badge = stockBadge(quantity);
 
@@ -153,8 +204,9 @@ export function VariantInventory({
         </table>
 
         <p className={styles.totals}>
-          {variants.length} {variants.length === 1 ? "variant" : "variants"} ·{" "}
-          {totalUnits(variants)} units
+          {visibleVariants.length}{" "}
+          {visibleVariants.length === 1 ? "variant" : "variants"} ·{" "}
+          {totalUnits(visibleVariants)} units
         </p>
       </>
     );

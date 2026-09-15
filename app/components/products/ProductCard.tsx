@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { FetcherWithComponents } from "react-router";
 
-import type { ProductActionResult } from "../../services/products.server";
+import type {
+  ProductActionResult,
+  ProductUpdateSnapshot,
+} from "../../services/products.server";
 import type { ProductListItem } from "../../types";
 import { ProductEditForm } from "./ProductEditForm";
 import { VariantInventory } from "./VariantInventory";
@@ -10,7 +13,7 @@ import styles from "./ProductCard.module.css";
 type ProductCardProps = {
   product: ProductListItem;
   fetcher: FetcherWithComponents<ProductActionResult>;
-  catalogRevision: number;
+  productUpdate: ProductUpdateSnapshot | null;
   isEditOpen: boolean;
   onEditToggle: (productId: string | null) => void;
 };
@@ -18,12 +21,26 @@ type ProductCardProps = {
 export function ProductCard({
   product,
   fetcher,
-  catalogRevision,
+  productUpdate,
   isEditOpen,
   onEditToggle,
 }: ProductCardProps) {
-  const price = product.variants?.nodes?.[0]?.price;
   const [isVariantsOpen, setIsVariantsOpen] = useState(false);
+
+  const displayProduct = useMemo(() => {
+    if (!productUpdate) {
+      return product;
+    }
+
+    return {
+      ...product,
+      title: productUpdate.title,
+      description: productUpdate.description,
+      totalInventory: productUpdate.totalInventory,
+    };
+  }, [product, productUpdate]);
+
+  const price = product.variants?.nodes?.[0]?.price;
 
   const isDeleting =
     fetcher.state !== "idle" &&
@@ -32,10 +49,12 @@ export function ProductCard({
 
   return (
     <article className={styles.card}>
-      {product.featuredImage?.url ? (
+      {displayProduct.featuredImage?.url ? (
         <img
-          src={product.featuredImage.url}
-          alt={product.featuredImage.altText || product.title}
+          src={displayProduct.featuredImage.url}
+          alt={
+            displayProduct.featuredImage.altText || displayProduct.title
+          }
         />
       ) : (
         <div className={styles.imagePlaceholder}>No image</div>
@@ -43,15 +62,15 @@ export function ProductCard({
 
       <div className={styles.content}>
         <div className={styles.header}>
-          <h3>{product.title}</h3>
+          <h3>{displayProduct.title}</h3>
 
-          <s-badge tone="success">{product.status}</s-badge>
+          <s-badge tone="success">{displayProduct.status}</s-badge>
         </div>
 
         <div className={styles.meta}>
           <span>{price ? `$${price}` : "No price"}</span>
 
-          <span>{product.totalInventory ?? 0} units</span>
+          <span>{displayProduct.totalInventory ?? 0} units</span>
         </div>
 
         <div className={styles.variantsRow}>
@@ -63,9 +82,9 @@ export function ProductCard({
         {isVariantsOpen && (
           <div className={styles.variantsPanel}>
             <VariantInventory
-              key={`${product.id}-${catalogRevision}-${product.totalInventory}-${price ?? "0"}`}
               productId={product.id}
-              productTitle={product.title}
+              productTitle={displayProduct.title}
+              variantPatch={productUpdate?.variant ?? null}
               onClose={() => setIsVariantsOpen(false)}
             />
           </div>
@@ -75,11 +94,10 @@ export function ProductCard({
           {isEditOpen ? (
             <div className={styles.editPanel}>
               <ProductEditForm
-                key={`${product.id}-${catalogRevision}`}
                 fetcher={fetcher}
                 productId={product.id}
-                title={product.title}
-                description={product.description}
+                title={displayProduct.title}
+                description={displayProduct.description}
                 onCancel={() => onEditToggle(null)}
               />
             </div>
@@ -90,7 +108,7 @@ export function ProductCard({
           <fetcher.Form
             method="post"
             onSubmit={(event) => {
-              if (!window.confirm(`Delete "${product.title}"?`)) {
+              if (!window.confirm(`Delete "${displayProduct.title}"?`)) {
                 event.preventDefault();
               }
             }}
