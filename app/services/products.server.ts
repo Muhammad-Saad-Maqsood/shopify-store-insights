@@ -373,21 +373,21 @@ async function updateProduct(
       };
     };
 
-    const variant = variantResult.data?.product?.variants?.nodes?.[0];
-    const variantId = variant?.id;
+    const variants = variantResult.data?.product?.variants?.nodes ?? [];
+    const variantUpdates = variants
+      .filter((variant) => variant.id)
+      .map((variant) => ({
+        id: variant.id,
+        price: price.toFixed(2),
+      }));
 
-    if (variantId) {
+    if (variantUpdates.length) {
       const priceResponse = await admin.graphql(
         UPDATE_VARIANT_PRICE_MUTATION,
         {
           variables: {
             productId,
-            variants: [
-              {
-                id: variantId,
-                price: price.toFixed(2),
-              },
-            ],
+            variants: variantUpdates,
           },
         },
       );

@@ -28,29 +28,50 @@ export function ProductEditForm({
       <input type="hidden" name="intent" value="update" />
       <input type="hidden" name="productId" value={productId} />
 
-      <input
-        name="title"
-        defaultValue={title}
-        placeholder="Product title"
-        required
-      />
+      <div className={styles.field}>
+        <label htmlFor={`title-${productId}`}>Name</label>
 
-      <input
-        name="price"
-        type="number"
-        min="0"
-        step="0.01"
-        defaultValue={price ?? ""}
-        placeholder="Price"
-        required
-      />
+        <input
+          id={`title-${productId}`}
+          name="title"
+          defaultValue={title}
+          placeholder="Product title"
+          required
+        />
+      </div>
 
-      <textarea
-        name="description"
-        defaultValue={description ?? ""}
-        placeholder="Description"
-        rows={3}
-      />
+      <div className={styles.field}>
+        <label htmlFor={`price-${productId}`}>Price</label>
+
+        <div className={styles.inputWithPrefix}>
+          <span>$</span>
+
+          <input
+            id={`price-${productId}`}
+            name="price"
+            type="number"
+            min="0"
+            step="0.01"
+            defaultValue={price ?? ""}
+            placeholder="0.00"
+            required
+          />
+        </div>
+
+        <span className={styles.fieldHelp}>Applies to all variants.</span>
+      </div>
+
+      <div className={styles.field}>
+        <label htmlFor={`description-${productId}`}>Description</label>
+
+        <textarea
+          id={`description-${productId}`}
+          name="description"
+          defaultValue={description ?? ""}
+          placeholder="Product description"
+          rows={3}
+        />
+      </div>
 
       <div className={styles.actions}>
         <s-button type="submit" variant="primary">

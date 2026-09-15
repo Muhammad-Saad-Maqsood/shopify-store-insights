@@ -145,7 +145,7 @@ export const PRODUCT_DELETE_MUTATION = `#graphql
 export const PRODUCT_VARIANT_FOR_UPDATE_QUERY = `#graphql
   query ProductVariantForUpdate($id: ID!) {
     product(id: $id) {
-      variants(first: 1) {
+      variants(first: 50) {
         nodes {
           id
           inventoryItem {
