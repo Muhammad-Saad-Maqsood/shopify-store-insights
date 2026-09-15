@@ -1,0 +1,25 @@
+.store-insights-stock {
+  margin: 12px 0;
+}
+
+.store-insights-stock__message {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.store-insights-stock__message--success {
+  color: #108043;
+}
+
+.store-insights-stock__message--warning {
+  color: #b98900;
+}
+
+.store-insights-stock__message--critical {
+  color: #d72c0d;
+}
+
+.store-insights-stock__message[hidden] {
+  display: none;
+}

@@ -1,32 +1,91 @@
-import { Form, useNavigation } from "react-router";
+import { useEffect, useState } from "react";
+import type { FetcherWithComponents } from "react-router";
+import { useFetcher } from "react-router";
 
+import type { ProductActionResult } from "../../services/products.server";
+import type { ProductVariantItem, ProductVariantsData } from "../../types";
 import styles from "./ProductEditForm.module.css";
 
+const DEFAULT_VARIANT_TITLE = "Default Title";
+
 type ProductEditFormProps = {
+  fetcher: FetcherWithComponents<ProductActionResult>;
   productId: string;
   title: string;
   description?: string | null;
-  price?: string;
   onCancel: () => void;
 };
 
+function variantLabel(variant: ProductVariantItem) {
+  const options = (variant.selectedOptions ?? [])
+    .map((option) => option.value)
+    .filter((value) => value && value !== DEFAULT_VARIANT_TITLE);
+
+  if (options.length) {
+    return options.join(" / ");
+  }
+
+  return variant.title && variant.title !== DEFAULT_VARIANT_TITLE
+    ? variant.title
+    : "Default variant";
+}
+
 export function ProductEditForm({
+  fetcher,
   productId,
   title,
   description,
-  price,
   onCancel,
 }: ProductEditFormProps) {
-  const navigation = useNavigation();
+  const variantsFetcher = useFetcher<ProductVariantsData>();
+  const variantsPath = `/app/product-variants?productId=${encodeURIComponent(
+    productId,
+  )}`;
+
+  const [selectedVariantId, setSelectedVariantId] = useState("");
+  const [variantPrice, setVariantPrice] = useState("");
+
+  useEffect(() => {
+    if (variantsFetcher.state === "idle" && !variantsFetcher.data) {
+      variantsFetcher.load(variantsPath);
+    }
+  }, [variantsFetcher, variantsPath]);
+
+  const data = variantsFetcher.data;
+  const variants = data?.variants ?? [];
+  const isLoadingVariants =
+    variantsFetcher.state !== "idle" || !data;
+
+  useEffect(() => {
+    if (!variants.length || selectedVariantId) {
+      return;
+    }
+
+    setSelectedVariantId(variants[0].id);
+    setVariantPrice(variants[0].price);
+  }, [variants, selectedVariantId]);
+
   const isSaving =
-    navigation.state === "submitting" &&
-    navigation.formData?.get("intent") === "update" &&
-    navigation.formData?.get("productId") === productId;
+    fetcher.state !== "idle" &&
+    fetcher.formData?.get("intent") === "update" &&
+    fetcher.formData?.get("productId") === productId;
+
+  function handleVariantChange(nextVariantId: string) {
+    const variant = variants.find((entry) => entry.id === nextVariantId);
+
+    if (!variant) {
+      return;
+    }
+
+    setSelectedVariantId(variant.id);
+    setVariantPrice(variant.price);
+  }
 
   return (
-    <Form method="post" className={styles.form}>
+    <fetcher.Form method="post" className={styles.form}>
       <input type="hidden" name="intent" value="update" />
       <input type="hidden" name="productId" value={productId} />
+      <input type="hidden" name="variantId" value={selectedVariantId} />
 
       <div className={styles.field}>
         <label htmlFor={`title-${productId}`}>Name</label>
@@ -41,27 +100,6 @@ export function ProductEditForm({
       </div>
 
       <div className={styles.field}>
-        <label htmlFor={`price-${productId}`}>Price</label>
-
-        <div className={styles.inputWithPrefix}>
-          <span>$</span>
-
-          <input
-            id={`price-${productId}`}
-            name="price"
-            type="number"
-            min="0"
-            step="0.01"
-            defaultValue={price ?? ""}
-            placeholder="0.00"
-            required
-          />
-        </div>
-
-        <span className={styles.fieldHelp}>Applies to all variants.</span>
-      </div>
-
-      <div className={styles.field}>
         <label htmlFor={`description-${productId}`}>Description</label>
 
         <textarea
@@ -73,14 +111,83 @@ export function ProductEditForm({
         />
       </div>
 
+      <div className={styles.field}>
+        <span className={styles.sectionLabel}>Variant price</span>
+
+        {isLoadingVariants && (
+          <div className={styles.variantStatus} aria-live="polite">
+            <s-spinner size="base" accessibilityLabel="Loading variants" />
+            <span>Loading variants…</span>
+          </div>
+        )}
+
+        {!isLoadingVariants && data?.error && (
+          <div className={styles.variantStatus}>
+            <s-banner heading="Unable to load variants" tone="critical">
+              {data.error}
+            </s-banner>
+
+            <s-button
+              type="button"
+              onClick={() => variantsFetcher.load(variantsPath)}
+            >
+              Retry
+            </s-button>
+          </div>
+        )}
+
+        {!isLoadingVariants && !data?.error && variants.length > 0 && (
+          <>
+            <label htmlFor={`variant-${productId}`}>Variant</label>
+
+            <select
+              id={`variant-${productId}`}
+              value={selectedVariantId}
+              onChange={(event) => handleVariantChange(event.target.value)}
+              required
+            >
+              {variants.map((variant) => (
+                <option key={variant.id} value={variant.id}>
+                  {variantLabel(variant)}
+                </option>
+              ))}
+            </select>
+
+            <label htmlFor={`variant-price-${productId}`}>Price</label>
+
+            <div className={styles.inputWithPrefix}>
+              <span>$</span>
+
+              <input
+                id={`variant-price-${productId}`}
+                name="variantPrice"
+                type="number"
+                min="0"
+                step="0.01"
+                value={variantPrice}
+                onChange={(event) => setVariantPrice(event.target.value)}
+                required
+              />
+            </div>
+          </>
+        )}
+      </div>
+
       <div className={styles.actions}>
-        <s-button type="submit" variant="primary">
+        <s-button
+          type="submit"
+          variant="primary"
+          loading={isSaving}
+          disabled={
+            isLoadingVariants || Boolean(data?.error) || variants.length === 0
+          }
+        >
           {isSaving ? "Saving..." : "Save changes"}
         </s-button>
-        <s-button type="button" onClick={onCancel}>
+        <s-button type="button" onClick={onCancel} disabled={isSaving}>
           Cancel
         </s-button>
       </div>
-    </Form>
+    </fetcher.Form>
   );
 }

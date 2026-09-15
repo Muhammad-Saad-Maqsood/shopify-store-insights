@@ -1,6 +1,6 @@
 export const STORE_INSIGHTS_QUERY = `#graphql
   query StoreInsights {
-    products(first: 20, sortKey: UPDATED_AT, reverse: true) {
+    products(first: 20, sortKey: CREATED_AT, reverse: true) {
       nodes {
         id
         title

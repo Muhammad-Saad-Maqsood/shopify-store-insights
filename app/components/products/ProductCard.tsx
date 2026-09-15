@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Form } from "react-router";
+import type { FetcherWithComponents } from "react-router";
 
+import type { ProductActionResult } from "../../services/products.server";
 import type { ProductListItem } from "../../types";
 import { ProductEditForm } from "./ProductEditForm";
 import { VariantInventory } from "./VariantInventory";
@@ -8,17 +9,24 @@ import styles from "./ProductCard.module.css";
 
 type ProductCardProps = {
   product: ProductListItem;
+  fetcher: FetcherWithComponents<ProductActionResult>;
   isEditOpen: boolean;
   onEditToggle: (productId: string | null) => void;
 };
 
 export function ProductCard({
   product,
+  fetcher,
   isEditOpen,
   onEditToggle,
 }: ProductCardProps) {
   const price = product.variants?.nodes?.[0]?.price;
   const [isVariantsOpen, setIsVariantsOpen] = useState(false);
+
+  const isDeleting =
+    fetcher.state !== "idle" &&
+    fetcher.formData?.get("intent") === "delete" &&
+    fetcher.formData?.get("productId") === product.id;
 
   return (
     <article className={styles.card}>
@@ -64,10 +72,10 @@ export function ProductCard({
           {isEditOpen ? (
             <div className={styles.editPanel}>
               <ProductEditForm
+                fetcher={fetcher}
                 productId={product.id}
                 title={product.title}
                 description={product.description}
-                price={price}
                 onCancel={() => onEditToggle(null)}
               />
             </div>
@@ -75,7 +83,7 @@ export function ProductCard({
             <s-button onClick={() => onEditToggle(product.id)}>Edit</s-button>
           )}
 
-          <Form
+          <fetcher.Form
             method="post"
             onSubmit={(event) => {
               if (!window.confirm(`Delete "${product.title}"?`)) {
@@ -85,8 +93,10 @@ export function ProductCard({
           >
             <input type="hidden" name="intent" value="delete" />
             <input type="hidden" name="productId" value={product.id} />
-            <s-button type="submit">Delete</s-button>
-          </Form>
+            <s-button type="submit" loading={isDeleting} disabled={isDeleting}>
+              Delete
+            </s-button>
+          </fetcher.Form>
         </div>
       </div>
     </article>

@@ -1,0 +1,8 @@
+{
+  "name": "Stock status",
+  "settings": {
+    "low_stock_threshold": {
+      "label": "Low stock threshold"
+    }
+  }
+}

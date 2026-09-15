@@ -1,21 +1,24 @@
-import { Form } from "react-router";
+import type { FetcherWithComponents } from "react-router";
 
+import type { ProductActionResult } from "../../services/products.server";
 import type { ProductLocation } from "../../types";
 import styles from "./ProductCreateForm.module.css";
 
 type ProductCreateFormProps = {
+  fetcher: FetcherWithComponents<ProductActionResult>;
   locations: ProductLocation[];
   isCreating: boolean;
   onCancel: () => void;
 };
 
 export function ProductCreateForm({
+  fetcher,
   locations,
   isCreating,
   onCancel,
 }: ProductCreateFormProps) {
   return (
-    <Form method="post" encType="multipart/form-data">
+    <fetcher.Form method="post" encType="multipart/form-data">
       <input type="hidden" name="intent" value="create" />
 
       <div className={styles.form}>
@@ -109,6 +112,6 @@ export function ProductCreateForm({
           </s-button>
         </div>
       </div>
-    </Form>
+    </fetcher.Form>
   );
 }

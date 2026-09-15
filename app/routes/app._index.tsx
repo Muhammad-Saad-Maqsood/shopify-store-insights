@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useRevalidator } from "react-router";
 
+import { OrderTable } from "../components/orders/OrderTable";
 import { STORE_INSIGHTS_QUERY } from "../graphql/dashboard";
 import { authenticate } from "../shopify.server";
 
@@ -164,31 +165,7 @@ export default function Dashboard() {
             <p>Orders will appear here when customers place orders.</p>
           </div>
         ) : (
-          <div className="orders-list">
-            {orders.map((order) => (
-              <div className="order-row" key={order.id}>
-                <div className="order-main">
-                  <strong>{order.name}</strong>
-                  <span>
-                    {new Date(order.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
-
-                <s-badge tone="success">
-                  {formatStatus(order.displayFinancialStatus)}
-                </s-badge>
-
-                <s-badge>
-                  {formatStatus(order.displayFulfillmentStatus)}
-                </s-badge>
-
-                <strong className="order-total">
-                  {order.currentTotalPriceSet?.shopMoney?.currencyCode}{" "}
-                  {order.currentTotalPriceSet?.shopMoney?.amount}
-                </strong>
-              </div>
-            ))}
-          </div>
+          <OrderTable orders={orders} />
         )}
       </s-section>
 
@@ -280,38 +257,6 @@ export default function Dashboard() {
           opacity: 0.55;
         }
 
-        .orders-list {
-          width: 100%;
-        }
-
-        .order-row {
-          min-height: 64px;
-          display: grid;
-          grid-template-columns: minmax(180px, 1fr) auto auto 100px;
-          gap: 20px;
-          align-items: center;
-          border-bottom: 1px solid var(--s-color-border);
-        }
-
-        .order-row:last-child {
-          border-bottom: none;
-        }
-
-        .order-main {
-          display: flex;
-          flex-direction: column;
-          gap: 3px;
-        }
-
-        .order-main span {
-          font-size: 12px;
-          opacity: 0.55;
-        }
-
-        .order-total {
-          text-align: right;
-        }
-
         .empty-state {
           padding: 36px 20px;
           text-align: center;
@@ -380,17 +325,6 @@ export default function Dashboard() {
           .kpi-grid,
           .product-grid {
             grid-template-columns: 1fr;
-          }
-
-          .order-row {
-            grid-template-columns: 1fr auto;
-            gap: 8px;
-            padding: 12px 0;
-          }
-
-          .order-total {
-            grid-column: 2;
-            grid-row: 1;
           }
         }
       `}</style>

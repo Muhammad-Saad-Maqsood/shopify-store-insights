@@ -6,6 +6,11 @@ import {
   SET_INVENTORY_QUANTITY_MUTATION,
 } from "../graphql/inventory";
 import {
+  FULFILLMENT_LOCATION_QUERY,
+  ONLINE_STORE_PUBLICATION_QUERY,
+  PUBLISHABLE_PUBLISH_MUTATION,
+} from "../graphql/storefront";
+import {
   LOCATIONS_QUERY,
   PRODUCT_CREATE_MUTATION,
   PRODUCT_DELETE_MUTATION,
@@ -15,6 +20,7 @@ import {
   PRODUCTS_QUERY,
   STAGED_UPLOAD_MUTATION,
   UPDATE_VARIANT_PRICE_MUTATION,
+  UPDATE_VARIANT_STOREFRONT_POLICY_MUTATION,
 } from "../graphql/products";
 import type {
   AdminGraphqlClient,
@@ -31,6 +37,8 @@ export type {
   ProductVariantItem,
   ProductVariantsData,
 };
+
+let cachedOnlineStorePublicationId: string | null = null;
 
 export type ProductsLoaderData = {
   products: ProductListItem[];
@@ -277,6 +285,36 @@ async function deleteProduct(
   }
 }
 
+function parseVariantPriceUpdates(formData: FormData) {
+  const id = String(formData.get("variantId") || "").trim();
+  const priceValue = String(formData.get("variantPrice") || "").trim();
+  const price = Number(priceValue);
+
+  if (!id) {
+    return {
+      error: "Select a variant to update.",
+      updates: [] as Array<{ id: string; price: string }>,
+    };
+  }
+
+  if (!priceValue || !Number.isFinite(price) || price < 0) {
+    return {
+      error: "Enter a valid price for the selected variant.",
+      updates: [],
+    };
+  }
+
+  return {
+    error: null,
+    updates: [
+      {
+        id,
+        price: price.toFixed(2),
+      },
+    ],
+  };
+}
+
 async function updateProduct(
   admin: AdminGraphqlClient,
   formData: FormData,
@@ -284,8 +322,8 @@ async function updateProduct(
   const productId = String(formData.get("productId") || "").trim();
   const title = String(formData.get("title") || "").trim();
   const description = String(formData.get("description") || "").trim();
-  const priceValue = String(formData.get("price") || "").trim();
-  const price = Number(priceValue);
+  const { error: variantParseError, updates: submittedVariantUpdates } =
+    parseVariantPriceUpdates(formData);
 
   if (!productId) {
     return {
@@ -301,10 +339,17 @@ async function updateProduct(
     };
   }
 
-  if (!priceValue || !Number.isFinite(price) || price < 0) {
+  if (variantParseError) {
     return {
       success: false,
-      message: "Enter a valid product price.",
+      message: variantParseError,
+    };
+  }
+
+  if (submittedVariantUpdates.length === 0) {
+    return {
+      success: false,
+      message: "Select a variant and enter a price.",
     };
   }
 
@@ -348,46 +393,13 @@ async function updateProduct(
       };
     }
 
-    // Get the product's first variant
-    const variantResponse = await admin.graphql(
-      PRODUCT_VARIANT_FOR_UPDATE_QUERY,
-      {
-        variables: {
-          id: productId,
-        },
-      },
-    );
-
-    const variantResult = (await variantResponse.json()) as {
-      data?: {
-        product?: {
-          variants?: {
-            nodes?: Array<{
-              id: string;
-              inventoryItem?: {
-                id: string;
-              };
-            }>;
-          };
-        };
-      };
-    };
-
-    const variants = variantResult.data?.product?.variants?.nodes ?? [];
-    const variantUpdates = variants
-      .filter((variant) => variant.id)
-      .map((variant) => ({
-        id: variant.id,
-        price: price.toFixed(2),
-      }));
-
-    if (variantUpdates.length) {
+    if (submittedVariantUpdates.length) {
       const priceResponse = await admin.graphql(
         UPDATE_VARIANT_PRICE_MUTATION,
         {
           variables: {
             productId,
-            variants: variantUpdates,
+            variants: submittedVariantUpdates,
           },
         },
       );
@@ -417,6 +429,18 @@ async function updateProduct(
           message: priceErrors[0].message,
         };
       }
+    }
+
+    const storefrontError = await ensureProductStorefrontReady(
+      admin,
+      productId,
+    );
+
+    if (storefrontError) {
+      return {
+        success: false,
+        message: storefrontError,
+      };
     }
 
     return {
@@ -480,130 +504,20 @@ async function setProductInventory(options: {
     };
   }
 
-  // 1. Enable inventory tracking.
-  const trackingResponse = await admin.graphql(
-    INVENTORY_ITEM_UPDATE_MUTATION,
-    {
-      variables: {
-        id: inventoryItemId,
-        input: {
-          tracked: true,
-        },
-      },
-    },
+  const prepareError = await ensureInventoryItemReadyAtLocation(
+    admin,
+    inventoryItemId,
+    targetLocationId,
   );
 
-  const trackingResult = (await trackingResponse.json()) as {
-    data?: {
-      inventoryItemUpdate?: {
-        userErrors?: GraphqlUserError[];
-      };
-    };
-    errors?: Array<{
-      message: string;
-    }>;
-  };
-
-  if (trackingResult.errors?.length) {
+  if (prepareError) {
     return {
       success: false,
-      error: trackingResult.errors[0].message,
+      error: prepareError,
     };
   }
 
-  const trackingErrors =
-    trackingResult.data?.inventoryItemUpdate?.userErrors;
-
-  if (trackingErrors?.length) {
-    return {
-      success: false,
-      error: trackingErrors[0].message,
-    };
-  }
-
-  // 2. Check whether the inventory item is already active
-  // at the target location.
-  const levelsResponse = await admin.graphql(INVENTORY_LEVELS_QUERY, {
-    variables: {
-      inventoryItemId,
-    },
-  });
-
-  const levelsResult = (await levelsResponse.json()) as {
-    data?: {
-      inventoryItem?: {
-        inventoryLevels?: {
-          nodes?: Array<{
-            location: {
-              id: string;
-            };
-          }>;
-        };
-      };
-    };
-    errors?: Array<{
-      message: string;
-    }>;
-  };
-
-  if (levelsResult.errors?.length) {
-    return {
-      success: false,
-      error: levelsResult.errors[0].message,
-    };
-  }
-
-  const activeLocations =
-    levelsResult.data?.inventoryItem?.inventoryLevels?.nodes ?? [];
-
-  const isAlreadyActive = activeLocations.some(
-    (level) => level.location.id === targetLocationId,
-  );
-
-  // 3. Activate only when necessary.
-  if (!isAlreadyActive) {
-    const activateResponse = await admin.graphql(
-      ACTIVATE_INVENTORY_MUTATION,
-      {
-        variables: {
-          inventoryItemId,
-          locationId: targetLocationId,
-          idempotencyKey: crypto.randomUUID(),
-        },
-      },
-    );
-
-    const activateResult = (await activateResponse.json()) as {
-      data?: {
-        inventoryActivate?: {
-          userErrors?: GraphqlUserError[];
-        };
-      };
-      errors?: Array<{
-        message: string;
-      }>;
-    };
-
-    if (activateResult.errors?.length) {
-      return {
-        success: false,
-        error: activateResult.errors[0].message,
-      };
-    }
-
-    const activateErrors =
-      activateResult.data?.inventoryActivate?.userErrors;
-
-    if (activateErrors?.length) {
-      return {
-        success: false,
-        error: activateErrors[0].message,
-      };
-    }
-  }
-
-  // 4. Now that the inventory level is active,
-  // set the requested available quantity.
+  // Set the requested available quantity once the item is active.
   const inventoryResponse = await admin.graphql(
     SET_INVENTORY_QUANTITY_MUTATION,
     {
@@ -654,6 +568,367 @@ async function setProductInventory(options: {
   }
 
   return null;
+}
+
+async function resolveFulfillmentLocationId(
+  admin: AdminGraphqlClient,
+  preferredLocationId = "",
+): Promise<string | null> {
+  if (preferredLocationId) {
+    return preferredLocationId;
+  }
+
+  const locationResponse = await admin.graphql(FULFILLMENT_LOCATION_QUERY);
+
+  const locationResult = (await locationResponse.json()) as {
+    data?: {
+      locations?: {
+        nodes?: Array<{
+          id: string;
+          fulfillsOnlineOrders?: boolean;
+        }>;
+      };
+    };
+    errors?: Array<{ message: string }>;
+  };
+
+  if (locationResult.errors?.length) {
+    return null;
+  }
+
+  const locations = locationResult.data?.locations?.nodes ?? [];
+  const onlineLocation =
+    locations.find((location) => location.fulfillsOnlineOrders) ??
+    locations[0];
+
+  return onlineLocation?.id ?? null;
+}
+
+async function ensureInventoryItemReadyAtLocation(
+  admin: AdminGraphqlClient,
+  inventoryItemId: string,
+  locationId: string,
+  isTracked = false,
+): Promise<string | null> {
+  const levelsResponse = await admin.graphql(INVENTORY_LEVELS_QUERY, {
+    variables: {
+      inventoryItemId,
+    },
+  });
+
+  const levelsResult = (await levelsResponse.json()) as {
+    data?: {
+      inventoryItem?: {
+        inventoryLevels?: {
+          nodes?: Array<{
+            location: {
+              id: string;
+            };
+          }>;
+        };
+      };
+    };
+    errors?: Array<{ message: string }>;
+  };
+
+  if (levelsResult.errors?.length) {
+    return levelsResult.errors[0].message;
+  }
+
+  const activeLocations =
+    levelsResult.data?.inventoryItem?.inventoryLevels?.nodes ?? [];
+
+  const isAlreadyActive = activeLocations.some(
+    (level) => level.location.id === locationId,
+  );
+
+  if (isAlreadyActive && isTracked) {
+    return null;
+  }
+
+  if (!isTracked) {
+    const trackingResponse = await admin.graphql(
+      INVENTORY_ITEM_UPDATE_MUTATION,
+      {
+        variables: {
+          id: inventoryItemId,
+          input: {
+            tracked: true,
+          },
+        },
+      },
+    );
+
+    const trackingResult = (await trackingResponse.json()) as {
+      data?: {
+        inventoryItemUpdate?: {
+          userErrors?: GraphqlUserError[];
+        };
+      };
+      errors?: Array<{ message: string }>;
+    };
+
+    if (trackingResult.errors?.length) {
+      return trackingResult.errors[0].message;
+    }
+
+    const trackingErrors =
+      trackingResult.data?.inventoryItemUpdate?.userErrors ?? [];
+
+    if (trackingErrors.length) {
+      return trackingErrors[0].message;
+    }
+  }
+
+  if (isAlreadyActive) {
+    return null;
+  }
+
+  const activateResponse = await admin.graphql(ACTIVATE_INVENTORY_MUTATION, {
+    variables: {
+      inventoryItemId,
+      locationId,
+      idempotencyKey: crypto.randomUUID(),
+    },
+  });
+
+  const activateResult = (await activateResponse.json()) as {
+    data?: {
+      inventoryActivate?: {
+        userErrors?: GraphqlUserError[];
+      };
+    };
+    errors?: Array<{ message: string }>;
+  };
+
+  if (activateResult.errors?.length) {
+    return activateResult.errors[0].message;
+  }
+
+  const activateErrors =
+    activateResult.data?.inventoryActivate?.userErrors ?? [];
+
+  if (activateErrors.length) {
+    return activateErrors[0].message;
+  }
+
+  return null;
+}
+
+async function getOnlineStorePublicationId(
+  admin: AdminGraphqlClient,
+): Promise<string | null> {
+  if (cachedOnlineStorePublicationId) {
+    return cachedOnlineStorePublicationId;
+  }
+
+  const publicationResponse = await admin.graphql(
+    ONLINE_STORE_PUBLICATION_QUERY,
+  );
+
+  const publicationResult = (await publicationResponse.json()) as {
+    data?: {
+      publications?: {
+        nodes?: Array<{
+          id: string;
+          catalog?: {
+            title?: string | null;
+          } | null;
+        }>;
+      };
+    };
+    errors?: Array<{ message: string }>;
+  };
+
+  if (publicationResult.errors?.length) {
+    return null;
+  }
+
+  const publications = publicationResult.data?.publications?.nodes ?? [];
+  const onlineStorePublication =
+    publications.find(
+      (publication) =>
+        publication.catalog?.title?.toLowerCase() === "online store",
+    ) ?? publications[0];
+
+  cachedOnlineStorePublicationId = onlineStorePublication?.id ?? null;
+
+  return cachedOnlineStorePublicationId;
+}
+
+async function publishProductToOnlineStore(
+  admin: AdminGraphqlClient,
+  productId: string,
+): Promise<string | null> {
+  const publicationId = await getOnlineStorePublicationId(admin);
+
+  if (!publicationId) {
+    return "Online Store publication is unavailable.";
+  }
+
+  const publishResponse = await admin.graphql(PUBLISHABLE_PUBLISH_MUTATION, {
+    variables: {
+      id: productId,
+      input: [
+        {
+          publicationId,
+        },
+      ],
+    },
+  });
+
+  const publishResult = (await publishResponse.json()) as {
+    data?: {
+      publishablePublish?: {
+        userErrors?: GraphqlUserError[];
+      };
+    };
+    errors?: Array<{ message: string }>;
+  };
+
+  if (publishResult.errors?.length) {
+    return publishResult.errors[0].message;
+  }
+
+  const publishErrors =
+    publishResult.data?.publishablePublish?.userErrors ?? [];
+
+  if (publishErrors.length) {
+    return publishErrors[0].message;
+  }
+
+  return null;
+}
+
+async function ensureProductStorefrontReady(
+  admin: AdminGraphqlClient,
+  productId: string,
+  preferredLocationId = "",
+): Promise<string | null> {
+  const variantsResponse = await admin.graphql(PRODUCT_VARIANTS_QUERY, {
+    variables: {
+      productId,
+    },
+  });
+
+  const variantsResult = (await variantsResponse.json()) as {
+    data?: {
+      product?: {
+        resourcePublications?: {
+          nodes?: Array<{
+            isPublished?: boolean;
+            publication?: {
+              catalog?: {
+                title?: string | null;
+              } | null;
+            } | null;
+          }>;
+        };
+        variants?: {
+          nodes?: ProductVariantItem[];
+        };
+      } | null;
+    };
+    errors?: Array<{ message: string }>;
+  };
+
+  if (variantsResult.errors?.length) {
+    return variantsResult.errors[0].message;
+  }
+
+  const product = variantsResult.data?.product;
+
+  if (!product) {
+    return "This product is no longer available.";
+  }
+
+  const variants = product.variants?.nodes ?? [];
+
+  if (!variants.length) {
+    return "This product has no variants to prepare for the storefront.";
+  }
+
+  const variantsNeedingPolicy = variants.filter(
+    (variant) => variant.inventoryPolicy !== "DENY",
+  );
+
+  if (variantsNeedingPolicy.length) {
+    const policyResponse = await admin.graphql(
+      UPDATE_VARIANT_STOREFRONT_POLICY_MUTATION,
+      {
+        variables: {
+          productId,
+          variants: variantsNeedingPolicy.map((variant) => ({
+            id: variant.id,
+            inventoryPolicy: "DENY",
+          })),
+        },
+      },
+    );
+
+    const policyResult = (await policyResponse.json()) as {
+      data?: {
+        productVariantsBulkUpdate?: {
+          userErrors?: GraphqlUserError[];
+        };
+      };
+      errors?: Array<{ message: string }>;
+    };
+
+    if (policyResult.errors?.length) {
+      return policyResult.errors[0].message;
+    }
+
+    const policyErrors =
+      policyResult.data?.productVariantsBulkUpdate?.userErrors ?? [];
+
+    if (policyErrors.length) {
+      return policyErrors[0].message;
+    }
+  }
+
+  const locationId = await resolveFulfillmentLocationId(
+    admin,
+    preferredLocationId,
+  );
+
+  if (!locationId) {
+    return "No fulfillment location is available for online inventory.";
+  }
+
+  const inventoryErrors = await Promise.all(
+    variants
+      .filter((variant) => variant.inventoryItem?.id)
+      .map((variant) =>
+        ensureInventoryItemReadyAtLocation(
+          admin,
+          variant.inventoryItem!.id,
+          locationId,
+          variant.inventoryItem?.tracked ?? false,
+        ),
+      ),
+  );
+
+  const inventoryError = inventoryErrors.find(
+    (result): result is string => Boolean(result),
+  );
+
+  if (inventoryError) {
+    return inventoryError;
+  }
+
+  const isPublishedOnline = product.resourcePublications?.nodes?.some(
+    (publication) =>
+      publication.isPublished &&
+      publication.publication?.catalog?.title?.toLowerCase() ===
+        "online store",
+  );
+
+  if (isPublishedOnline) {
+    return null;
+  }
+
+  return publishProductToOnlineStore(admin, productId);
 }
 
 async function createProduct(
@@ -1050,6 +1325,19 @@ async function createProduct(
       if (inventoryError) {
         return inventoryError;
       }
+    }
+
+    const storefrontError = await ensureProductStorefrontReady(
+      admin,
+      product.id,
+      locationId,
+    );
+
+    if (storefrontError) {
+      return {
+        success: false,
+        error: storefrontError,
+      };
     }
 
     return {

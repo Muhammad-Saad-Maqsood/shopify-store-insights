@@ -1,6 +1,6 @@
 export const PRODUCTS_QUERY = `#graphql
   query ProductsPage {
-    products(first: 50, sortKey: UPDATED_AT, reverse: true) {
+    products(first: 50, sortKey: CREATED_AT, reverse: true) {
       nodes {
         id
         title
@@ -26,12 +26,28 @@ export const PRODUCT_VARIANTS_QUERY = `#graphql
     product(id: $productId) {
       id
       title
+      resourcePublications(first: 10) {
+        nodes {
+          isPublished
+          publication {
+            id
+            catalog {
+              title
+            }
+          }
+        }
+      }
       variants(first: 50) {
         nodes {
           id
           title
           price
           inventoryQuantity
+          inventoryPolicy
+          inventoryItem {
+            id
+            tracked
+          }
           selectedOptions {
             name
             value
@@ -172,6 +188,28 @@ export const UPDATE_VARIANT_PRICE_MUTATION = `#graphql
       productVariants {
         id
         price
+        inventoryPolicy
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;
+
+export const UPDATE_VARIANT_STOREFRONT_POLICY_MUTATION = `#graphql
+  mutation UpdateVariantStorefrontPolicy(
+    $productId: ID!
+    $variants: [ProductVariantsBulkInput!]!
+  ) {
+    productVariantsBulkUpdate(
+      productId: $productId
+      variants: $variants
+    ) {
+      productVariants {
+        id
+        inventoryPolicy
       }
       userErrors {
         field

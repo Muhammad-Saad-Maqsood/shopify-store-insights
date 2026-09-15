@@ -1,6 +1,7 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
+import { AppNavLink } from "../components/AppNavLink";
 import { authenticate } from "../shopify.server";
 import {
   Outlet,
@@ -26,10 +27,10 @@ export default function App() {
   return (
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
-        <s-link href="/app">Dashboard</s-link>
-        <s-link href="/app/products">Products</s-link>
-        <s-link href="/app/orders">Orders</s-link>
-        <s-link href="/app/settings">Settings</s-link>
+        <AppNavLink to="/app">Dashboard</AppNavLink>
+        <AppNavLink to="/app/products">Products</AppNavLink>
+        <AppNavLink to="/app/orders">Orders</AppNavLink>
+        <AppNavLink to="/app/settings">Settings</AppNavLink>
       </s-app-nav>
 
       {isNavigating && (

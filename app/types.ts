@@ -20,6 +20,11 @@ export type ProductVariantItem = {
   title: string;
   price: string;
   inventoryQuantity: number | null;
+  inventoryPolicy?: string | null;
+  inventoryItem?: {
+    id: string;
+    tracked: boolean;
+  } | null;
   selectedOptions?: Array<{
     name: string;
     value: string;

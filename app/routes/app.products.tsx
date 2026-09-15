@@ -3,9 +3,9 @@ import type {
   LoaderFunctionArgs,
 } from "react-router";
 import {
-  useActionData,
+  useFetcher,
   useLoaderData,
-  useNavigation,
+  useRevalidator,
 } from "react-router";
 import { useEffect, useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
@@ -16,6 +16,7 @@ import productsStyles from "../components/products/products.module.css";
 import {
   handleProductAction,
   loadProductsPage,
+  type ProductActionResult,
 } from "../services/products.server";
 import { authenticate } from "../shopify.server";
 
@@ -38,13 +39,18 @@ export async function action({ request }: ActionFunctionArgs) {
 
 export default function ProductsPage() {
   const { products, locations, error } = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
-  const navigation = useNavigation();
+  const fetcher = useFetcher<ProductActionResult>();
+  const revalidator = useRevalidator();
   const shopify = useAppBridge();
 
   const [openEditId, setOpenEditId] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+
+  const actionData = fetcher.data;
+  const isSubmitting = fetcher.state !== "idle";
+  const isCreating =
+    isSubmitting && fetcher.formData?.get("intent") === "create";
 
   useEffect(() => {
     if (!actionData) return;
@@ -80,15 +86,18 @@ export default function ProductsPage() {
   }, [actionData, shopify]);
 
   useEffect(() => {
+    // Only refresh the catalog after a form submission — not on every mount.
+    if (fetcher.state === "idle" && fetcher.data && fetcher.formData) {
+      revalidator.revalidate();
+    }
+  }, [fetcher.state, fetcher.data, fetcher.formData, revalidator]);
+
+  useEffect(() => {
     if (!feedback) return;
 
     const timeout = window.setTimeout(() => setFeedback(null), 5000);
     return () => window.clearTimeout(timeout);
   }, [feedback]);
-
-  const isCreating =
-    navigation.state === "submitting" &&
-    navigation.formData?.get("intent") === "create";
 
   return (
     <s-page heading="Products">
@@ -120,6 +129,7 @@ export default function ProductsPage() {
             Add the essentials now. You can update product details later.
           </p>
           <ProductCreateForm
+            fetcher={fetcher}
             locations={locations}
             isCreating={isCreating}
             onCancel={() => setIsCreateOpen(false)}
@@ -146,6 +156,7 @@ export default function ProductsPage() {
               <ProductCard
                 key={product.id}
                 product={product}
+                fetcher={fetcher}
                 isEditOpen={openEditId === product.id}
                 onEditToggle={setOpenEditId}
               />
