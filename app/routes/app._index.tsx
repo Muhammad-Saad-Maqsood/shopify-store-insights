@@ -13,6 +13,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     const result = (await response.json()) as {
       data?: {
+        shop?: {
+          currencyCode?: string;
+        };
+
         products?: {
           nodes?: Array<{
             id: string;
@@ -27,6 +31,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
         };
 
         productsCount?: {
+          count: number;
+        };
+
+        ordersCount?: {
           count: number;
         };
 
@@ -45,6 +53,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
             };
           }>;
         };
+
+        revenueOrders?: {
+          nodes?: Array<{
+            currentTotalPriceSet?: {
+              shopMoney?: {
+                amount: string;
+                currencyCode: string;
+              };
+            };
+          }>;
+        };
       };
       errors?: Array<{
         message: string;
@@ -55,7 +74,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       return {
         products: [],
         orders: [],
-        recentRevenue: "0.00",
+        orderCount: 0,
+        totalRevenue: "0.00",
         currency: "USD",
         error: "Shopify could not load the store data.",
       };
@@ -63,21 +83,25 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     const products = result.data?.products?.nodes ?? [];
     const orders = result.data?.orders?.nodes ?? [];
+    const revenueOrders = result.data?.revenueOrders?.nodes ?? [];
 
-    const recentRevenue = orders.reduce((total, order) => {
+    const totalRevenue = revenueOrders.reduce((total, order) => {
       return (
         total + Number(order.currentTotalPriceSet?.shopMoney?.amount ?? 0)
       );
     }, 0);
 
     const currency =
-      orders[0]?.currentTotalPriceSet?.shopMoney?.currencyCode ?? "USD";
+      result.data?.shop?.currencyCode ??
+      revenueOrders[0]?.currentTotalPriceSet?.shopMoney?.currencyCode ??
+      "USD";
 
     return {
       products,
       orders,
       productCount: result.data?.productsCount?.count ?? 0,
-      recentRevenue: recentRevenue.toFixed(2),
+      orderCount: result.data?.ordersCount?.count ?? 0,
+      totalRevenue: totalRevenue.toFixed(2),
       currency,
       error: null,
     };
@@ -85,7 +109,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return {
       products: [],
       orders: [],
-      recentRevenue: "0.00",
+      orderCount: 0,
+      totalRevenue: "0.00",
       currency: "USD",
       error: "Unable to connect to Shopify.",
     };
@@ -102,8 +127,15 @@ function formatStatus(status?: string | null) {
 }
 
 export default function Dashboard() {
-  const { products, orders, productCount, recentRevenue, currency, error } =
-    useLoaderData<typeof loader>();
+  const {
+    products,
+    orders,
+    productCount,
+    orderCount,
+    totalRevenue,
+    currency,
+    error,
+  } = useLoaderData<typeof loader>();
 
   const revalidator = useRevalidator();
 
@@ -138,17 +170,17 @@ export default function Dashboard() {
 
       <div className="kpi-grid">
         <div className="kpi-card">
-          <span className="kpi-label">Recent revenue</span>
+          <span className="kpi-label">Total revenue</span>
           <strong>
-            {currency} {recentRevenue}
+            {currency} {totalRevenue}
           </strong>
-          <span className="kpi-meta">From {orders.length} recent orders</span>
+          <span className="kpi-meta">Across all orders</span>
         </div>
 
         <div className="kpi-card">
           <span className="kpi-label">Orders</span>
-          <strong>{orders.length}</strong>
-          <span className="kpi-meta">Latest orders</span>
+          <strong>{orderCount}</strong>
+          <span className="kpi-meta">Total orders</span>
         </div>
 
         <div className="kpi-card">
